@@ -2,7 +2,7 @@ const bcrypt = require('bcrypt');
 const db = require('./config/db'); 
 
 async function runSeed() {
-    console.log("🌱 A iniciar o Seed da Base de Dados...");
+    console.log("A iniciar o Seed da Base de Dados...");
 
     try {
         console.log("A limpar tabelas antigas...");
@@ -67,11 +67,11 @@ async function runSeed() {
             ['Administrador', 'admin@softinsa.pt', adminPassword, 'admin']
         );
 
-        console.log("✅ Seed concluído com sucesso! A base de dados está pronta a usar.");
+        console.log("Seed concluído com sucesso! A base de dados está pronta a usar.");
         process.exit(0); 
 
     } catch (error) {
-        console.error("❌ Erro ao correr o Seed:", error);
+        console.error("Erro ao correr o Seed:", error);
         process.exit(1); 
     }
 }
