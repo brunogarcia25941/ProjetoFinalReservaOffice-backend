@@ -9,7 +9,10 @@ const swaggerJsDoc = require('swagger-jsdoc');
 
 // 2. CONFIGURAÇÃO DE MIDDLEWARES GLOBAIS
 const app = express();
-app.use(cors()); // Permite que o Frontend comunique com o Backend
+app.use(cors({
+    origin: ['http://localhost:3000', 'https://o-teu-futuro-frontend.vercel.app'], 
+    credentials: true // Obrigatorio para aceitar cookies/tokens de segurança
+})); // Permite que o Frontend comunique com o Backend
 app.use(express.json()); // Permite ler JSON no body dos pedidos
 
 
@@ -120,5 +123,5 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Servidor a correr na porta ${PORT}`);
-    console.log(`Documentação disponível em: http://localhost:${PORT}/api-docs`);
+    console.log(`Documentação disponível em: https://projetofinalreservaoffice-backend.onrender.com/api-docs`);
 });
