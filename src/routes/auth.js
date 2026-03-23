@@ -110,4 +110,84 @@ router.post('/logout', authMiddleware, authController.logout);
  */
 router.post('/register', authController.register);
 
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Pedir recuperação de password
+ *     description: Envia um email com um link mágico para redefinir a password.
+ *     tags:
+ *       - Autenticação
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: o_teu_email_pessoal@gmail.com
+ *     responses:
+ *       200:
+ *         description: Email de recuperação enviado com sucesso
+ *       404:
+ *         description: Utilizador não encontrado
+ */
+router.post('/forgot-password', authController.forgotPassword);
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Redefinir a password
+ *     description: Recebe o token enviado por email e a nova password do utilizador.
+ *     tags:
+ *       - Autenticação
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               token:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password redefinida com sucesso
+ *       400:
+ *         description: Token inválido ou expirado
+ */
+router.post('/reset-password', authController.resetPassword);
+
+const adminMiddleware = require('../middlewares/admin');
+
+/**
+ * @swagger
+ * /api/auth/users:
+ *   get:
+ *     summary: Listar todos os utilizadores (Apenas Admin)
+ *     description: Devolve a lista de todos os utilizadores registados. Requer permissões de administrador.
+ *     tags:
+ *       - Autenticação
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de utilizadores obtida com sucesso
+ *       401:
+ *         description: Não autenticado (Token em falta ou inválido)
+ *       403:
+ *         description: Acesso negado (Apenas administradores)
+ */
+router.get(
+  '/users',
+  authMiddleware,
+  adminMiddleware,
+  authController.getAllUsers
+);
+
 module.exports = router;
