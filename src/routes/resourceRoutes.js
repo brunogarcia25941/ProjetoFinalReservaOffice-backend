@@ -167,7 +167,7 @@ router.put(
  */
 router.get(
   '/availability', 
-  verificarToken, 
+  authMiddleware, 
   resourceController.getResourcesWithAvailability);
 
 module.exports = router;
