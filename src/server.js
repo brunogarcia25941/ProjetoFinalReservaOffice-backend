@@ -13,8 +13,10 @@ app.use(cors({
     origin: [
         'http://localhost:3000', 
         'https://projeto-final-reserva-office-backen.vercel.app',
-        'https://projeto-final-reserva-office-backend-m33kqm420.vercel.app'
+        'https://projeto-final-reserva-office-backend-m33kqm420.vercel.app',
+        'https://projeto-final-reserva-office.vercel.app'
     ], 
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true 
 }));
 
