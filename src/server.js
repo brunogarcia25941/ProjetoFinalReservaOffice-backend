@@ -125,3 +125,5 @@ app.listen(PORT, () => {
     console.log(`Servidor a correr na porta ${PORT}`);
     console.log(`Documentação disponível em: https://projetofinalreservaoffice-backend.onrender.com/api-docs`);
 });
+
+module.exports = app;
