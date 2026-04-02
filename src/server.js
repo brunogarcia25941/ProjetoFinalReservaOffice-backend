@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const db = require('./config/db'); 
-
+const path = require('path'); // Adiciona isto no topo do ficheiro
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsDoc = require('swagger-jsdoc');
 
@@ -39,31 +39,21 @@ const swaggerOptions = {
             description: 'API do MVP para gestão de reservas e recursos.',
         },
         servers: [
-            { 
-                url: 'https://projeto-final-reserva-office-backen.vercel.app',
-                description: 'Domínio Principal (Vercel)' 
-            },
-            { 
-                url: 'https://projeto-final-reserva-office-backend-m33kqm420.vercel.app',
-                description: 'Domínio de Produção' 
-            },
-            { 
-                url: 'http://localhost:5000',
-                description: 'Servidor Local' 
-            }
+            { url: 'https://projeto-final-reserva-office-backen.vercel.app' },
+            { url: 'https://projeto-final-reserva-office-backend-m33kqm420.vercel.app' },
+            { url: 'http://localhost:5000' }
         ],
         components: {
             securitySchemes: {
-                bearerAuth: { 
-                    type: 'http', 
-                    scheme: 'bearer', 
-                    bearerFormat: 'JWT' 
-                }
+                bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
             }
         }
     },
-    // ✔️ Corrigido (não precisas de duplicar src se não usas)
-    apis: ['./routes/*.js', './server.js'], 
+    // USAR PATH.JOIN PARA NÃO FALHAR NA VERCEL
+    apis: [
+        path.join(__dirname, './routes/*.js'),
+        path.join(__dirname, './server.js')
+    ], 
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
