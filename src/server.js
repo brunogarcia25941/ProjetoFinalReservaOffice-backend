@@ -1,24 +1,26 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-
-// 1. INICIALIZAÇÃO DA BASE DE DADOS
 const db = require('./config/db'); 
 
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsDoc = require('swagger-jsdoc');
 
-// 2. CONFIGURAÇÃO DE MIDDLEWARES GLOBAIS
 const app = express();
 
+// 1. CORS
 app.use(cors({
-    origin: ['http://localhost:3000', 'https://o-teu-futuro-frontend.vercel.app'], 
+    origin: [
+        'http://localhost:3000', 
+        'https://projeto-final-reserva-office-backen.vercel.app',
+        'https://projeto-final-reserva-office-backend-m33kqm420.vercel.app'
+    ], 
     credentials: true 
 }));
 
 app.use(express.json());
 
-// 3. DEFINIÇÃO DE ROTAS DA API
+// 2. ROTAS
 const resourceRoutes = require('./routes/resourceRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const authRoutes = require('./routes/auth');
@@ -27,7 +29,7 @@ app.use('/api/resources', resourceRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/auth', authRoutes);
 
-// 4. CONFIGURAÇÃO DO SWAGGER
+// 3. SWAGGER
 const swaggerOptions = {
     definition: {
         openapi: '3.0.0',
@@ -35,45 +37,53 @@ const swaggerOptions = {
             title: 'Reserva Office API',
             version: '1.0.0',
             description: 'API do MVP para gestão de reservas e recursos.',
-            contact: {
-                name: 'Equipa de Desenvolvimento',
-            }
         },
         servers: [
-            {
-                url: 'https://projetofinalreservaoffice-backend.vercel.app',
-                description: 'Servidor de Produção (Vercel)'
+            { 
+                url: 'https://projeto-final-reserva-office-backen.vercel.app',
+                description: 'Domínio Principal (Vercel)' 
             },
-            {
+            { 
+                url: 'https://projeto-final-reserva-office-backend-m33kqm420.vercel.app',
+                description: 'Domínio de Produção' 
+            },
+            { 
                 url: 'http://localhost:5000',
-                description: 'Servidor Local'
+                description: 'Servidor Local' 
             }
         ],
         components: {
             securitySchemes: {
-                bearerAuth: {
-                    type: 'http',
-                    scheme: 'bearer',
-                    bearerFormat: 'JWT',
+                bearerAuth: { 
+                    type: 'http', 
+                    scheme: 'bearer', 
+                    bearerFormat: 'JWT' 
                 }
             }
         }
     },
-    // ⚠️ CORRIGIDO (sem /src)
-    apis: ['./routes/*.js', './server.js'],
+    // ✔️ Corrigido (não precisas de duplicar src se não usas)
+    apis: ['./routes/*.js', './server.js'], 
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 
-// FIX Swagger na Vercel
-const CSS_URL = "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui.min.css";
+// FIX Swagger Vercel (CDN)
+const SWAGGER_ASSETS_URL = "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5";
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs, {
-    customCss: '.swagger-ui .topbar { display: none }',
-    customCssUrl: CSS_URL,
-}));
+app.use('/api-docs', swaggerUi.serve, (req, res) => {
+    const html = swaggerUi.generateHTML(swaggerDocs, {
+        customCss: '.swagger-ui .topbar { display: none }',
+        customCssUrl: `${SWAGGER_ASSETS_URL}/swagger-ui.min.css`,
+        customJs: [
+            `${SWAGGER_ASSETS_URL}/swagger-ui-bundle.js`,
+            `${SWAGGER_ASSETS_URL}/swagger-ui-standalone-preset.js`
+        ]
+    });
+    res.send(html);
+});
 
-// 5. ROTAS PROTEGIDAS
+// 4. ROTAS PROTEGIDAS
 const verificarToken = require('./middlewares/auth');
 const verificarAdmin = require('./middlewares/admin');
 
@@ -109,6 +119,10 @@ app.get('/api/perfil', verificarToken, (req, res) => {
  *     responses:
  *       200:
  *         description: Bem-vindo Admin.
+ *       401:
+ *         description: Não autenticado.
+ *       403:
+ *         description: Acesso negado.
  */
 app.get('/api/admin/dashboard', verificarToken, verificarAdmin, (req, res) => {
     res.json({ 
@@ -119,16 +133,15 @@ app.get('/api/admin/dashboard', verificarToken, verificarAdmin, (req, res) => {
 
 // ROTA BASE
 app.get('/', (req, res) => {
-    res.send('API Reserva Office a funcionar na Vercel! 🚀');
+    res.send('API Reserva Office Online na Vercel! 🚀');
 });
 
-// 6. INICIALIZAÇÃO DO SERVIDOR
+// 5. INICIALIZAÇÃO
 const PORT = process.env.PORT || 5000;
 
-// Local apenas
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {
-        console.log(`Servidor local na porta ${PORT}`);
+        console.log(`Servidor na porta ${PORT}`);
         console.log(`Swagger: http://localhost:${PORT}/api-docs`);
     });
 }
