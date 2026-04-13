@@ -50,17 +50,17 @@ exports.createResource = async (req, res) => {
     }
 };
 
-// --- ATUALIZAR RECURSO (Rota de Admin) ---
+
 exports.updateResource = async (req, res) => {
     const { id } = req.params;
     const { name, type, floor, features } = req.body;
 
     try {
-        // Primeiro verificamos se existe
+     
         const [exists] = await db.query('SELECT * FROM resources WHERE id = ?', [id]);
         if (exists.length === 0) return res.status(404).json({ message: 'Recurso não encontrado.' });
 
-        // Atualizamos os campos (se não vierem no body, mantemos os antigos)
+      
         await db.query(
             'UPDATE resources SET name = ?, type = ?, floor = ?, features = ? WHERE id = ?',
             [
@@ -79,12 +79,8 @@ exports.updateResource = async (req, res) => {
     }
 };
 
-/**
- * Vai buscar os recursos e indica dinamicamente quais estão ocupados
- * num intervalo de tempo específico (start_time e end_time via query params).
- */
 exports.getResourcesWithAvailability = async (req, res) => {
-    // 1. Ir buscar as datas escolhidas que vêm no URL
+  
     const { start, end } = req.query;
 
     if (!start || !end) {
@@ -92,9 +88,6 @@ exports.getResourcesWithAvailability = async (req, res) => {
     }
 
     try {
-        // 2. Query Mágica SQL:
-        // Seleciona todos os recursos E faz um LEFT JOIN com as reservas.
-        // Se houver uma reserva confirmada que se sobrepõe, b.id não será nulo.
         const query = `
             SELECT 
                 r.id, r.name, r.type, r.status, r.floor,
@@ -108,14 +101,56 @@ exports.getResourcesWithAvailability = async (req, res) => {
             FROM resources r
         `;
 
-        // Executar a query passando o Fim e depois o Início (ordem do SQL)
+        
         const [recursos] = await db.execute(query, [end, start]);
 
-        // Devolver a lista com a nova propriedade 'is_booked'
+       
         return res.status(200).json(recursos);
 
     } catch (error) {
         console.error("Erro ao procurar disponibilidade:", error);
         return res.status(500).json({ message: "Erro interno ao verificar disponibilidade." });
+    }
+};
+
+exports.createResource = async (req, res) => {
+    const { name, type, floor, status } = req.body;
+    try {
+        const [result] = await db.query(
+            'INSERT INTO resources (name, type, floor, status) VALUES (?, ?, ?, ?)',
+            [name, type, floor, status || 'active']
+        );
+        res.status(201).json({ message: 'Recurso criado com sucesso!', id: result.insertId });
+    } catch (error) {
+        console.error('Erro ao criar recurso:', error);
+        res.status(500).json({ message: 'Erro ao criar recurso.' });
+    }
+};
+
+
+exports.updateResource = async (req, res) => {
+    const { id } = req.params;
+    const { name, type, floor, status } = req.body;
+    try {
+        await db.query(
+            'UPDATE resources SET name = ?, type = ?, floor = ?, status = ? WHERE id = ?',
+            [name, type, floor, status, id]
+        );
+        res.json({ message: 'Recurso atualizado com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao atualizar recurso:', error);
+        res.status(500).json({ message: 'Erro ao atualizar recurso.' });
+    }
+};
+
+
+exports.deleteResource = async (req, res) => {
+    const { id } = req.params;
+    try {
+        await db.query('DELETE FROM resources WHERE id = ?', [id]);
+        res.json({ message: 'Recurso eliminado com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao eliminar recurso:', error);
+        res.status(500).json({ message: 'Erro ao eliminar recurso.' });
     }
 };

@@ -4,43 +4,42 @@ const resourceController = require('../controllers/resourceController');
 const authMiddleware = require('../middlewares/auth');
 const adminMiddleware = require('../middlewares/admin');
 
-/**
- * @swagger
- * tags:
- *   name: Recursos
- *   description: Gestão de Mesas e Salas
- */
+// --- ROTAS PÚBLICAS / UTILIZADOR NORMAL ---
 
 /**
  * @swagger
  * /api/resources:
  *   get:
  *     summary: Listar todos os recursos
- *     description: Retorna a lista de mesas e salas. Pode ser filtrado por piso.
  *     tags:
  *       - Recursos
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: floor
- *         schema:
- *           type: integer
- *         description: "Filtrar recursos por um piso específico (ex: 1, 2, 3)"
  *     responses:
  *       200:
- *         description: Lista de recursos obtida com sucesso
- *       401:
- *         description: Não autenticado
+ *         description: Sucesso.
  */
-router.get('/', authMiddleware, resourceController.getAllResources);
+router.get('/', resourceController.getAllResources);
+
+/**
+ * @swagger
+ * /api/resources/availability:
+ *   get:
+ *     summary: Obter recursos com disponibilidade
+ *     tags:
+ *       - Recursos
+ *     responses:
+ *       200:
+ *         description: Sucesso.
+ */
+router.get('/availability', resourceController.getAvailableResources);
+
+
+// --- ROTAS DE ADMINISTRADOR ---
 
 /**
  * @swagger
  * /api/resources:
  *   post:
  *     summary: Criar um novo recurso (Apenas Admin)
- *     description: Permite criar mesas ou salas no sistema.
  *     tags:
  *       - Recursos
  *     security:
@@ -54,42 +53,29 @@ router.get('/', authMiddleware, resourceController.getAllResources);
  *             properties:
  *               name:
  *                 type: string
- *                 example: Mesa B-05
  *               type:
  *                 type: string
  *                 enum: [desk, room]
- *                 example: desk
  *               floor:
- *                 type: integer
- *                 example: 2
- *               features:
- *                 type: object
- *                 example:
- *                   monitores: 2
- *                   perto_janela: true
+ *                 type: string
+ *               status:
+ *                 type: string
+ *                 enum: [active, maintenance]
  *     responses:
  *       201:
- *         description: Recurso criado com sucesso
- *       400:
- *         description: Dados inválidos
+ *         description: Recurso criado com sucesso.
  *       401:
- *         description: Não autenticado
+ *         description: Não autenticado.
  *       403:
- *         description: Acesso negado (Apenas Admin)
+ *         description: Acesso negado.
  */
-router.post(
-  '/',
-  authMiddleware,
-  adminMiddleware,
-  resourceController.createResource
-);
+router.post('/', authMiddleware, adminMiddleware, resourceController.createResource);
 
 /**
  * @swagger
  * /api/resources/{id}:
  *   put:
  *     summary: Atualizar um recurso existente (Apenas Admin)
- *     description: Atualiza os dados de um recurso existente.
  *     tags:
  *       - Recursos
  *     security:
@@ -100,7 +86,6 @@ router.post(
  *         required: true
  *         schema:
  *           type: integer
- *         description: ID do recurso
  *     requestBody:
  *       required: true
  *       content:
@@ -112,62 +97,47 @@ router.post(
  *                 type: string
  *               type:
  *                 type: string
- *                 enum: [desk, room]
  *               floor:
- *                 type: integer
- *               features:
- *                 type: object
+ *                 type: string
+ *               status:
+ *                 type: string
  *     responses:
  *       200:
- *         description: Recurso atualizado com sucesso
- *       400:
- *         description: Dados inválidos
+ *         description: Recurso atualizado com sucesso.
  *       401:
- *         description: Não autenticado
+ *         description: Não autenticado.
  *       403:
- *         description: Acesso negado (Apenas Admin)
+ *         description: Acesso negado.
  *       404:
- *         description: Recurso não encontrado
+ *         description: Recurso não encontrado.
  */
-router.put(
-  '/:id',
-  authMiddleware,
-  adminMiddleware,
-  resourceController.updateResource
-);
+router.put('/:id', authMiddleware, adminMiddleware, resourceController.updateResource);
 
 /**
  * @swagger
- * /api/resources/availability:
- *  get:
- *    summary: Obter recursos com disponibilidade
- *    description: Retorna a lista de recursos e indica quais estão ocupados no intervalo de tempo fornecido.
- *    tags:
- *      - Recursos
- *    security:
- *      - bearerAuth: []
- *    parameters:
- *      - in: query
- *        name: start
- *        required: true
- *        schema:
- *          type: string
- *        description: Data e hora de início (formato YYYY-MM-DD HH:mm:00)
- *      - in: query
- *        name: end
- *        required: true
- *        schema:
- *          type: string
- *        description: Data e hora de fim (formato YYYY-MM-DD HH:mm:00)
- *    responses:
- *      200:
- *        description: Lista de recursos com a flag is_booked.
- *      400:
- *        description: Faltam os parâmetros start ou end.
+ * /api/resources/{id}:
+ *   delete:
+ *     summary: Eliminar um recurso (Apenas Admin)
+ *     tags:
+ *       - Recursos
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Recurso apagado com sucesso.
+ *       401:
+ *         description: Não autenticado.
+ *       403:
+ *         description: Acesso negado.
+ *       404:
+ *         description: Recurso não encontrado.
  */
-router.get(
-  '/availability', 
-  authMiddleware, 
-  resourceController.getResourcesWithAvailability);
+router.delete('/:id', authMiddleware, adminMiddleware, resourceController.deleteResource);
 
 module.exports = router;
