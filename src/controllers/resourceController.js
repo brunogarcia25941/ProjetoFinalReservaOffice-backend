@@ -75,3 +75,33 @@ exports.deleteResource = async (req, res) => {
         res.status(500).json({ message: 'Erro ao eliminar recurso.' });
     }
 };
+
+// 6. Obter recursos com disponibilidade (Para o Dashboard principal)
+exports.getResourcesWithAvailability = async (req, res) => {
+    const { start, end } = req.query;
+
+    if (!start || !end) {
+        return res.status(400).json({ message: "Por favor, forneça o start e end time." });
+    }
+
+    try {
+        const query = `
+            SELECT 
+                r.id, r.name, r.type, r.status, r.floor,
+                (SELECT COUNT(*) FROM bookings b 
+                 WHERE b.resource_id = r.id 
+                 AND b.status = 'confirmed'
+                 AND b.start_time < ? 
+                 AND b.end_time > ?   
+                ) > 0 AS is_booked
+            FROM resources r
+        `;
+
+        const [recursos] = await db.execute(query, [end, start]);
+        return res.status(200).json(recursos);
+
+    } catch (error) {
+        console.error("Erro ao procurar disponibilidade:", error);
+        return res.status(500).json({ message: "Erro interno ao verificar disponibilidade." });
+    }
+};

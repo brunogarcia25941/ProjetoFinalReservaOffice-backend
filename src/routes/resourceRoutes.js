@@ -30,7 +30,7 @@ router.get('/', resourceController.getAllResources);
  *       200:
  *         description: Sucesso.
  */
-router.get('/availability', resourceController.getAvailableResources);
+router.get('/availability', authMiddleware, resourceController.getResourcesWithAvailability);
 
 
 // --- ROTAS DE ADMINISTRADOR ---
