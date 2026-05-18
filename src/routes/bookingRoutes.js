@@ -35,6 +35,43 @@ router.put('/:id/cancel', verificarToken, bookingController.cancelBooking);
 
 /**
  * @swagger
+ * /api/bookings/{id}:
+ *   put:
+ *     summary: Atualizar uma reserva
+ *     description: Permite ao utilizador alterar os dados (recurso, data/hora) de uma reserva existente.
+ *     tags:
+ *       - Reservas
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               resource_id:
+ *                 type: integer
+ *               start_time:
+ *                 type: string
+ *               end_time:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Reserva atualizada com sucesso.
+ *       400:
+ *         description: Conflito de horários ou dados inválidos.
+ */
+router.put('/:id', verificarToken, bookingController.updateBooking);
+
+/**
+ * @swagger
  * /api/bookings:
  *   get:
  *     summary: Listar as reservas do utilizador logado

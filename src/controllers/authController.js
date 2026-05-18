@@ -165,9 +165,9 @@ exports.forgotPassword = async (req, res) => {
             [resetPasswordToken, mysqlExpireDate, user.id]
         );
 
-        // Criar o link (No futuro vai apontar para o teu Frontend no React)
-        // Por agora, metemos o localhost do Frontend
-        const resetUrl = `http://localhost:3000/reset-password?token=${resetToken}`;
+        // Criar o link de redefinição apontando para o frontend em produção
+        const frontendUrl = process.env.FRONTEND_URL || 'https://projeto-final-reserva-office.vercel.app';
+        const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
         const message = `Esqueceste-te da password?\n\nClica neste link para redefinir a tua password (válido por 1 hora):\n${resetUrl}\n\nSe não pediste a alteração, podes ignorar este email de forma segura.`;
 
         
