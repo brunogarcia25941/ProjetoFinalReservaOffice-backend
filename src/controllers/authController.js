@@ -37,7 +37,8 @@ exports.login = async (req, res) => {
             { expiresIn: '7d' }
         );
 
-        await db.query('UPDATE users SET refresh_token = ? WHERE id = ?', [refreshToken, user.id]);
+        const hashedRefreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+        await db.query('UPDATE users SET refresh_token = ? WHERE id = ?', [hashedRefreshToken, user.id]);
 
        
         res.json({
@@ -62,9 +63,9 @@ exports.refreshToken = async (req, res) => {
     try {
     
         const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-
-  
-        const [users] = await db.query('SELECT * FROM users WHERE id = ? AND refresh_token = ?', [decoded.id, refreshToken]);
+        
+        const hashedRefreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+        const [users] = await db.query('SELECT * FROM users WHERE id = ? AND refresh_token = ?', [decoded.id, hashedRefreshToken]);
         
         if (users.length === 0) {
             return res.status(403).json({ message: 'Refresh Token inválido ou revogado. Faz login novamente.' });
@@ -144,7 +145,7 @@ exports.forgotPassword = async (req, res) => {
         // Verificar se o utilizador existe
         const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
         if (users.length === 0) {
-            return res.status(404).json({ message: 'Não existe nenhuma conta com este email.' });
+        return res.status(200).json({ message: 'Email de recuperação enviado! Verifica a tua caixa de correio.' });
         }
         const user = users[0];
 

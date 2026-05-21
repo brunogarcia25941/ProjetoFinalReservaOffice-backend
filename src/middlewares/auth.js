@@ -22,7 +22,10 @@ module.exports = (req, res, next) => {
 
     try {
         // 3. Verifica e descodifica o token usando a chave secreta
-        const secret = process.env.JWT_SECRET || 'chave_super_secreta_provisoria';
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+          return res.status(500).json({ message: 'Erro Crítico: JWT_SECRET não está definido no servidor.' });
+        }
         const decoded = jwt.verify(token, secret);
 
         // 4. Injeta os dados do utilizador descodificados no objeto do pedido (req)

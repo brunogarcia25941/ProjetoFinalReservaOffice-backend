@@ -17,8 +17,6 @@ const sendEmail = async (options) => {
         socketTimeout: 20000,
         dnsTimeout: 10000,
         tls: {
-            // Garante que não falha por causa do nome do host ou certificados da cloud
-            rejectUnauthorized: false,
             servername: 'smtp.gmail.com'
         }
     });

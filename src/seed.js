@@ -67,16 +67,24 @@ async function runSeed() {
         }
 
         // 3. CRIAR ADMIN APENAS SE NÃO EXISTIR
-        const [adminExists] = await db.query('SELECT id FROM users WHERE email = ?', ['admin@softinsa.pt']);
+        const adminEmail = process.env.ADMIN_EMAIL;
+        const adminPasswordRaw = process.env.ADMIN_PASSWORD;
+
+        if (!adminEmail || !adminPasswordRaw) {
+            console.error("ERRO DE SEGURANÇA: ADMIN_EMAIL ou ADMIN_PASSWORD não estão definidos no ficheiro .env");
+            process.exit(1);
+        }
+
+        const [adminExists] = await db.query('SELECT id FROM users WHERE email = ?', [adminEmail]);
         
         if (adminExists.length === 0) {
             console.log("Criando utilizador Administrador...");
             const salt = await bcrypt.genSalt(10);
-            const adminPassword = await bcrypt.hash('123456', salt); 
+            const adminPasswordHash = await bcrypt.hash(adminPasswordRaw, salt); 
             
             await db.query(
                 'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-                ['Administrador', 'admin@softinsa.pt', adminPassword, 'admin']
+                ['Administrador', adminEmail, adminPasswordHash, 'admin']
             );
         } else {
             console.log("Administrador já existe. Ignorando criação.");
