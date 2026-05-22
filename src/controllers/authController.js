@@ -48,8 +48,12 @@ exports.login = async (req, res) => {
             user: { id: user.id, name: user.name, email: user.email, role: user.role }
         });
     } catch (error) {
-        console.error('Erro no login:', error);
-        res.status(500).json({ message: 'Erro interno no servidor.' });
+        console.error('Erro detalhado no login:', error);
+        res.status(500).json({ 
+            message: 'Erro interno no servidor.', 
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 };
 exports.refreshToken = async (req, res) => {
