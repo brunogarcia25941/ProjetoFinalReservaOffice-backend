@@ -10,6 +10,9 @@ const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
+// 0. Confiar em Proxies (Vercel, Cloudflare, etc.) para o Rate Limiting funcionar por IP real
+app.set('trust proxy', 1);
+
 // 1. SEGURANÇA (Headers HTTP e CORS)
 app.use(helmet({
     contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false // Desativar CSP em dev para não quebrar o Swagger
