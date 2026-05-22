@@ -4,7 +4,7 @@ const resourceController = require('../controllers/resourceController');
 const authMiddleware = require('../middlewares/auth');
 const adminMiddleware = require('../middlewares/admin');
 
-// --- ROTAS PÚBLICAS / UTILIZADOR NORMAL ---
+// --- ROTAS PARA UTILIZADORES AUTENTICADOS ---
 
 /**
  * @swagger
@@ -13,11 +13,15 @@ const adminMiddleware = require('../middlewares/admin');
  *     summary: Listar todos os recursos
  *     tags:
  *       - Recursos
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Sucesso.
+ *       401:
+ *         description: Não autorizado.
  */
-router.get('/', resourceController.getAllResources);
+router.get('/', authMiddleware, resourceController.getAllResources);
 
 /**
  * @swagger

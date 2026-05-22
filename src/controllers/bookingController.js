@@ -9,6 +9,11 @@ exports.createBooking = async (req, res) => {
         return res.status(400).json({ message: "Por favor, forneça o recurso, a data/hora de início e de fim." });
     }
 
+    // Validar se data de fim é posterior à data de início
+    if (new Date(start_time) >= new Date(end_time)) {
+        return res.status(400).json({ message: "A data de fim deve ser posterior à data de início." });
+    }
+
     let connection;
     try {
         // Obter uma ligação do pool para gerir a transação
@@ -17,7 +22,23 @@ exports.createBooking = async (req, res) => {
         // 1. INICIAR TRANSAÇÃO
         await connection.beginTransaction();
 
-        // 2. VERIFICAR CONFLITOS COM BLOQUEIO DE ESCRITA (FOR UPDATE)
+        // 2. VERIFICAR SE O RECURSO EXISTE E ESTÁ ATIVO
+        const [recursos] = await connection.execute(
+            'SELECT status FROM resources WHERE id = ? FOR UPDATE',
+            [resource_id]
+        );
+
+        if (recursos.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: "O recurso selecionado não existe." });
+        }
+
+        if (recursos[0].status !== 'active') {
+            await connection.rollback();
+            return res.status(400).json({ message: "Lamentamos, mas este recurso encontra-se em manutenção." });
+        }
+
+        // 3. VERIFICAR CONFLITOS COM BLOQUEIO DE ESCRITA (FOR UPDATE)
         // O FOR UPDATE impede que outros pedidos leiam estas mesmas linhas até a transação terminar
         const queryVerificacao = `
             SELECT id FROM bookings 
@@ -37,13 +58,13 @@ exports.createBooking = async (req, res) => {
             });
         }
         
-        // 3. INSERIR A RESERVA
+        // 4. INSERIR A RESERVA
         const [result] = await connection.execute(
             'INSERT INTO bookings (user_id, resource_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?)',
             [user_id, resource_id, start_time, end_time, 'confirmed']
         );
 
-        // 4. CONFIRMAR TRANSAÇÃO
+        // 5. CONFIRMAR TRANSAÇÃO
         await connection.commit();
 
         return res.status(201).json({ 
@@ -119,7 +140,7 @@ exports.cancelBooking = async (req, res) => {
 
     } catch (error) {
         console.error("Erro ao cancelar reserva:", error);
-        return res.status(500).json({ message: `Erro MySQL: ${error.message}` });
+        return res.status(500).json({ message: "Erro interno ao processar o cancelamento." });
     }
 };
 
@@ -133,21 +154,49 @@ exports.updateBooking = async (req, res) => {
         return res.status(400).json({ message: "Por favor, forneça o recurso, a data/hora de início e de fim." });
     }
 
+    // Validar se data de fim é posterior à data de início
+    if (new Date(start_time) >= new Date(end_time)) {
+        return res.status(400).json({ message: "A data de fim deve ser posterior à data de início." });
+    }
+
+    let connection;
     try {
-        const [bookings] = await db.execute(
-            'SELECT * FROM bookings WHERE id = ? AND user_id = ?',
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+
+        // 1. Verificar se a reserva existe e pertence ao utilizador
+        const [bookings] = await connection.execute(
+            'SELECT * FROM bookings WHERE id = ? AND user_id = ? FOR UPDATE',
             [booking_id, user_id]
         );
 
         if (bookings.length === 0) {
+            await connection.rollback();
             return res.status(404).json({ message: "Reserva não encontrada ou sem permissão." });
         }
 
         if (bookings[0].status === 'cancelled') {
+            await connection.rollback();
             return res.status(400).json({ message: "Não é possível editar uma reserva cancelada." });
         }
 
-        // Verificar conflitos ignorando a reserva atual
+        // 2. Verificar se o recurso (novo ou mesmo) existe e está ativo
+        const [recursos] = await connection.execute(
+            'SELECT status FROM resources WHERE id = ? FOR UPDATE',
+            [resource_id]
+        );
+
+        if (recursos.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: "O recurso selecionado não existe." });
+        }
+
+        if (recursos[0].status !== 'active') {
+            await connection.rollback();
+            return res.status(400).json({ message: "Lamentamos, mas este recurso encontra-se em manutenção." });
+        }
+
+        // 3. Verificar conflitos ignorando a reserva atual
         const queryVerificacao = `
             SELECT id FROM bookings 
             WHERE resource_id = ? 
@@ -155,26 +204,32 @@ exports.updateBooking = async (req, res) => {
             AND id != ?
             AND start_time < ? 
             AND end_time > ?
+            FOR UPDATE
         `;
 
-        const [reservasConflituosas] = await db.execute(queryVerificacao, [resource_id, booking_id, end_time, start_time]);
+        const [reservasConflituosas] = await connection.execute(queryVerificacao, [resource_id, booking_id, end_time, start_time]);
 
         if (reservasConflituosas.length > 0) {
+            await connection.rollback();
             return res.status(400).json({ 
-                message: "Recurso já reservado para este horário." 
+                message: "Lamentamos, mas este recurso já se encontra reservado para o horário selecionado." 
             });
         }
 
-        await db.execute(
+        await connection.execute(
             'UPDATE bookings SET resource_id = ?, start_time = ?, end_time = ? WHERE id = ?',
             [resource_id, start_time, end_time, booking_id]
         );
 
+        await connection.commit();
         return res.status(200).json({ message: "Reserva atualizada com sucesso!" });
 
     } catch (error) {
+        if (connection) await connection.rollback();
         console.error("Erro ao atualizar reserva:", error);
         return res.status(500).json({ message: "Erro interno ao processar a atualização." });
+    } finally {
+        if (connection) connection.release();
     }
 };
 

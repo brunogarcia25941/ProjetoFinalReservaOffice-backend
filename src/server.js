@@ -1,15 +1,20 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const db = require('./config/db'); 
-const path = require('path'); // Adiciona isto no topo do ficheiro
+const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsDoc = require('swagger-jsdoc');
 const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
-// 1. CORS
+// 1. SEGURANÇA (Headers HTTP e CORS)
+app.use(helmet({
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false // Desativar CSP em dev para não quebrar o Swagger
+}));
+
 app.use(cors({
     origin: [
         'http://localhost:3000', 
@@ -21,7 +26,7 @@ app.use(cors({
     credentials: true 
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 // 2. ROTAS
 const resourceRoutes = require('./routes/resourceRoutes');
@@ -33,49 +38,46 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
-// 3. SWAGGER
-const swaggerOptions = {
-    definition: {
-        openapi: '3.0.0',
-        info: {
-            title: 'Reserva Office API',
-            version: '1.0.0',
-            description: 'API do MVP para gestão de reservas e recursos.',
-        },
-        servers: [
-            { url: 'https://projeto-final-reserva-office-backen.vercel.app' },
-            { url: 'https://projeto-final-reserva-office-backend-m33kqm420.vercel.app' },
-            { url: 'http://localhost:5000' }
-        ],
-        components: {
-            securitySchemes: {
-                bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
+// 3. SWAGGER (Apenas em Desenvolvimento)
+if (process.env.NODE_ENV !== 'production') {
+    const swaggerOptions = {
+        definition: {
+            openapi: '3.0.0',
+            info: {
+                title: 'Reserva Office API',
+                version: '1.0.0',
+                description: 'API do MVP para gestão de reservas e recursos.',
+            },
+            servers: [
+                { url: 'http://localhost:5000' }
+            ],
+            components: {
+                securitySchemes: {
+                    bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
+                }
             }
-        }
-    },
-    // USAR PATH.JOIN PARA NÃO FALHAR NA VERCEL
-    apis: [
-        path.join(__dirname, './routes/*.js'),
-        path.join(__dirname, './server.js')
-    ], 
-};
+        },
+        apis: [
+            path.join(__dirname, './routes/*.js'),
+            path.join(__dirname, './server.js')
+        ], 
+    };
 
-const swaggerDocs = swaggerJsDoc(swaggerOptions);
+    const swaggerDocs = swaggerJsDoc(swaggerOptions);
+    const SWAGGER_ASSETS_URL = "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5";
 
-// FIX Swagger Vercel (CDN)
-const SWAGGER_ASSETS_URL = "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5";
-
-app.use('/api-docs', swaggerUi.serve, (req, res) => {
-    const html = swaggerUi.generateHTML(swaggerDocs, {
-        customCss: '.swagger-ui .topbar { display: none }',
-        customCssUrl: `${SWAGGER_ASSETS_URL}/swagger-ui.min.css`,
-        customJs: [
-            `${SWAGGER_ASSETS_URL}/swagger-ui-bundle.js`,
-            `${SWAGGER_ASSETS_URL}/swagger-ui-standalone-preset.js`
-        ]
+    app.use('/api-docs', swaggerUi.serve, (req, res) => {
+        const html = swaggerUi.generateHTML(swaggerDocs, {
+            customCss: '.swagger-ui .topbar { display: none }',
+            customCssUrl: `${SWAGGER_ASSETS_URL}/swagger-ui.min.css`,
+            customJs: [
+                `${SWAGGER_ASSETS_URL}/swagger-ui-bundle.js`,
+                `${SWAGGER_ASSETS_URL}/swagger-ui-standalone-preset.js`
+            ]
+        });
+        res.send(html);
     });
-    res.send(html);
-});
+}
 
 // 4. ROTAS PROTEGIDAS
 const verificarToken = require('./middlewares/auth');

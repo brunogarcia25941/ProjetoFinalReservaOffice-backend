@@ -1,7 +1,33 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const authMiddleware = require('../middlewares/auth');
+
+// Configuração de Rate Limiting para proteger endpoints sensíveis
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 5, // Limita a 5 tentativas por IP
+    message: { message: "Demasiadas tentativas de login. Tenta novamente após 15 minutos." },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hora
+    max: 3, // Limita a 3 registos por IP por hora
+    message: { message: "Demasiadas contas criadas a partir deste IP. Tenta novamente mais tarde." },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+const forgotPasswordLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hora
+    max: 3, // Limita a 3 pedidos de recuperação por hora
+    message: { message: "Demasiados pedidos de recuperação de password. Tenta novamente mais tarde." },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 /**
  * @swagger
@@ -30,7 +56,7 @@ const authMiddleware = require('../middlewares/auth');
  *       401:
  *         description: Credenciais inválidas
  */
-router.post('/login', authController.login);
+router.post('/login', loginLimiter, authController.login);
 
 /**
  * @swagger
@@ -108,7 +134,7 @@ router.post('/logout', authMiddleware, authController.logout);
  *       400:
  *         description: Dados inválidos ou email já registado
  */
-router.post('/register', authController.register);
+router.post('/register', registerLimiter, authController.register);
 
 /**
  * @swagger
@@ -134,7 +160,7 @@ router.post('/register', authController.register);
  *       404:
  *         description: Utilizador não encontrado
  */
-router.post('/forgot-password', authController.forgotPassword);
+router.post('/forgot-password', forgotPasswordLimiter, authController.forgotPassword);
 
 /**
  * @swagger

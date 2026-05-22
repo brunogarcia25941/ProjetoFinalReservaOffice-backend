@@ -16,7 +16,7 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     try {
-        const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const [users] = await db.execute('SELECT id, role, token_version, password_hash FROM users WHERE email = ?', [email]);
         if (users.length === 0) return res.status(401).json({ message: 'Credenciais inválidas.' });
 
         const user = users[0];
@@ -38,7 +38,7 @@ exports.login = async (req, res) => {
         );
 
         const hashedRefreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
-        await db.query('UPDATE users SET refresh_token = ? WHERE id = ?', [hashedRefreshToken, user.id]);
+        await db.execute('UPDATE users SET refresh_token = ? WHERE id = ?', [hashedRefreshToken, user.id]);
 
        
         res.json({
@@ -64,7 +64,7 @@ exports.refreshToken = async (req, res) => {
         const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
         
         const hashedRefreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
-        const [users] = await db.query('SELECT * FROM users WHERE id = ? AND refresh_token = ?', [decoded.id, hashedRefreshToken]);
+        const [users] = await db.execute('SELECT id, role, token_version FROM users WHERE id = ? AND refresh_token = ?', [decoded.id, hashedRefreshToken]);
         
         if (users.length === 0) {
             return res.status(403).json({ message: 'Refresh Token inválido ou revogado. Faz login novamente.' });
@@ -91,7 +91,7 @@ exports.logout = async (req, res) => {
     const { id } = req.user; 
     try {
         // Incrementa a versão do token para invalidar TODOS os access tokens atuais
-        await db.query('UPDATE users SET refresh_token = NULL, token_version = token_version + 1 WHERE id = ?', [id]);
+        await db.execute('UPDATE users SET refresh_token = NULL, token_version = token_version + 1 WHERE id = ?', [id]);
         res.json({ message: 'Sessão terminada com sucesso.' });
     } catch (error) {
         res.status(500).json({ message: 'Erro ao terminar sessão.' });
@@ -140,7 +140,7 @@ exports.register = async (req, res) => {
     }
 
     try {
-        const [existingUsers] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
+        const [existingUsers] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
         
         if (existingUsers.length > 0) {
             return res.status(400).json({ message: "Este email já se encontra registado." });
@@ -172,7 +172,7 @@ exports.forgotPassword = async (req, res) => {
 
     try {
         // Verificar se o utilizador existe
-        const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const [users] = await db.execute('SELECT id, email FROM users WHERE email = ?', [email]);
         if (users.length === 0) {
         return res.status(200).json({ message: 'Email de recuperação enviado! Verifica a tua caixa de correio.' });
         }
@@ -190,7 +190,7 @@ exports.forgotPassword = async (req, res) => {
         const mysqlExpireDate = expireDate.toISOString().slice(0, 19).replace('T', ' ');
 
         // Guardar na base de dados
-        await db.query(
+        await db.execute(
             'UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE id = ?',
             [resetPasswordToken, mysqlExpireDate, user.id]
         );
@@ -211,7 +211,7 @@ exports.forgotPassword = async (req, res) => {
         } catch (emailError) {
             console.error('Erro a enviar email:', emailError);
             
-            await db.query('UPDATE users SET reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?', [user.id]);
+            await db.execute('UPDATE users SET reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?', [user.id]);
             return res.status(500).json({ message: 'Erro ao enviar o email. Tenta novamente mais tarde.' });
         }
 
@@ -241,7 +241,7 @@ exports.resetPassword = async (req, res) => {
         const resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex');
 
         
-        const [users] = await db.query('SELECT * FROM users WHERE reset_password_token = ?', [resetPasswordToken]);
+        const [users] = await db.execute('SELECT id, reset_password_expires FROM users WHERE reset_password_token = ?', [resetPasswordToken]);
         
         if (users.length === 0) {
             return res.status(400).json({ message: 'Token inválido.' });
@@ -261,7 +261,7 @@ exports.resetPassword = async (req, res) => {
         const hashedPassword = await bcrypt.hash(newPassword, salt);
 
         
-        await db.query(
+        await db.execute(
             'UPDATE users SET password_hash = ?, reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?',
             [hashedPassword, user.id]
         );
@@ -274,7 +274,7 @@ exports.resetPassword = async (req, res) => {
 };
 exports.getAllUsers = async (req, res) => {
     try {
-        const [users] = await db.query('SELECT id, name, email, role, created_at FROM users');
+        const [users] = await db.execute('SELECT id, name, email, role, created_at FROM users');
         res.status(200).json(users);
     } catch (error) {
         console.error('Erro ao listar users:', error);
@@ -286,15 +286,37 @@ exports.updateUser = async (req, res) => {
     const { id } = req.params;
     const { name, email, role } = req.body;
 
+    // 1. Validação de Campos Obrigatórios
+    if (!name || !name.trim() || !email || !role) {
+        return res.status(400).json({ message: "Por favor, preencha todos os campos obrigatórios." });
+    }
+
+    // 2. Validação de Formato de Email
+    if (!validateEmail(email)) {
+        return res.status(400).json({ message: "O formato do email é inválido." });
+    }
+
+    // 3. Validação de Role (Cargo)
+    const rolesValidos = ['user', 'admin'];
+    if (!rolesValidos.includes(role)) {
+        return res.status(400).json({ message: "O cargo (role) selecionado é inválido. Escolha 'user' ou 'admin'." });
+    }
+
     try {
-        const [userExists] = await db.query('SELECT * FROM users WHERE id = ?', [id]);
+        const [userExists] = await db.execute('SELECT id FROM users WHERE id = ?', [id]);
         if (userExists.length === 0) {
             return res.status(404).json({ message: 'Utilizador não encontrado.' });
         }
 
-        await db.query(
+        // Verificar se o email já está em uso por outro utilizador
+        const [emailInUse] = await db.execute('SELECT id FROM users WHERE email = ? AND id != ?', [email, id]);
+        if (emailInUse.length > 0) {
+            return res.status(400).json({ message: "Este email já se encontra registado por outro utilizador." });
+        }
+
+        await db.execute(
             'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?',
-            [name, email, role, id]
+            [name.trim(), email, role, id]
         );
 
         res.json({ message: 'Utilizador atualizado com sucesso!' });
@@ -306,9 +328,31 @@ exports.updateUser = async (req, res) => {
 
 exports.deleteUser = async (req, res) => {
     const { id } = req.params;
+    const adminId = req.user.id; // ID do administrador que está a fazer o pedido
+
+    // 1. Impedir que um administrador se elimine a si próprio
+    if (parseInt(id) === parseInt(adminId)) {
+        return res.status(400).json({ message: 'Não podes eliminar a tua própria conta de administrador.' });
+    }
 
     try {
-        const [result] = await db.query('DELETE FROM users WHERE id = ?', [id]);
+        // 2. Verificar se o utilizador a eliminar é um administrador
+        const [userToDelete] = await db.execute('SELECT role FROM users WHERE id = ?', [id]);
+        
+        if (userToDelete.length === 0) {
+            return res.status(404).json({ message: 'Utilizador não encontrado.' });
+        }
+
+        // 3. Se for um administrador, garantir que não é o único no sistema
+        if (userToDelete[0].role === 'admin') {
+            const [adminCount] = await db.execute('SELECT COUNT(*) as total FROM users WHERE role = ?', ['admin']);
+            
+            if (adminCount[0].total <= 1) {
+                return res.status(400).json({ message: 'Não é possível eliminar o único administrador do sistema.' });
+            }
+        }
+
+        const [result] = await db.execute('DELETE FROM users WHERE id = ?', [id]);
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: 'Utilizador não encontrado.' });
         }
