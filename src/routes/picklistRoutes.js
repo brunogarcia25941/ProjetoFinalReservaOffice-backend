@@ -1,8 +1,35 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-const verificarToken = require('../middlewares/auth');
-const verificarAdmin = require('../middlewares/admin');
+
+/**
+ * @swagger
+ * /api/picklists:
+ *   get:
+ *     summary: Obter todas as picklists para o frontend
+ *     tags: [Picklists]
+ */
+router.get('/', async (req, res) => {
+    try {
+        const [roles] = await db.execute('SELECT name as id, label FROM user_roles WHERE active = TRUE');
+        const [resourceTypes] = await db.execute('SELECT name as id, label FROM resource_types WHERE active = TRUE');
+        
+        // Picklist estática para estados (para manter consistência com o resto do sistema)
+        const resourceStatuses = [
+            { id: 'active', label: 'Ativo (Livre)' },
+            { id: 'maintenance', label: 'Em Manutenção' }
+        ];
+
+        res.json({
+            roles,
+            resourceTypes,
+            resourceStatuses
+        });
+    } catch (error) {
+        console.error("Erro ao obter picklists:", error);
+        res.status(500).json({ message: "Erro ao carregar dados auxiliares." });
+    }
+});
 
 /**
  * @swagger

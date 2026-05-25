@@ -9,8 +9,8 @@ exports.getAllResources = async (req, res) => {
                 l.building, l.floor, l.zone,
                 r.status, r.features, r.created_at 
             FROM resources r 
-            JOIN resource_types rt ON r.type_id = rt.id
-            JOIN locations l ON r.location_id = l.id
+            LEFT JOIN resource_types rt ON r.type_id = rt.id
+            LEFT JOIN locations l ON r.location_id = l.id
         `;
         const [resources] = await db.execute(query);
         res.status(200).json(resources);
@@ -47,16 +47,17 @@ exports.getAvailableResources = async (req, res) => {
 exports.createResource = async (req, res) => {
     const { name, type, location_id, status, features } = req.body;
     try {
-        // Obter o ID do tipo
-        const [types] = await db.execute('SELECT id FROM resource_types WHERE name = ?', [type]);
+        // Obter o ID do tipo (type pode vir como 'desk' ou id numérico conforme o frontend)
+        let typeId;
+        const [types] = await db.execute('SELECT id FROM resource_types WHERE name = ? OR id = ?', [type, type]);
         if (types.length === 0) {
             return res.status(400).json({ message: "Tipo de recurso inválido." });
         }
-        const typeId = types[0].id;
+        typeId = types[0].id;
 
         const [result] = await db.execute(
             'INSERT INTO resources (name, type_id, location_id, status, features) VALUES (?, ?, ?, ?, ?)',
-            [name, typeId, location_id, status || 'active', features ? JSON.stringify(features) : null]
+            [name, typeId, location_id || null, status || 'active', features ? JSON.stringify(features) : null]
         );
         res.status(201).json({ message: 'Recurso criado com sucesso!', id: result.insertId });
     } catch (error) {
@@ -77,15 +78,16 @@ exports.updateResource = async (req, res) => {
         }
 
         // Obter o ID do tipo
-        const [types] = await db.execute('SELECT id FROM resource_types WHERE name = ?', [type]);
+        let typeId;
+        const [types] = await db.execute('SELECT id FROM resource_types WHERE name = ? OR id = ?', [type, type]);
         if (types.length === 0) {
             return res.status(400).json({ message: "Tipo de recurso inválido." });
         }
-        const typeId = types[0].id;
+        typeId = types[0].id;
 
         await db.execute(
             'UPDATE resources SET name = ?, type_id = ?, location_id = ?, status = ?, features = ? WHERE id = ?',
-            [name, typeId, location_id, status, features ? JSON.stringify(features) : null, id]
+            [name, typeId, location_id || resourceExists[0].location_id, status, features ? JSON.stringify(features) : null, id]
         );
         res.json({ message: 'Recurso atualizado com sucesso!' });
     } catch (error) {
@@ -129,9 +131,9 @@ exports.getResourcesWithAvailability = async (req, res) => {
                  AND b.end_time > ?   
                 ) > 0 AS is_booked
             FROM resources r
-            JOIN resource_types rt ON r.type_id = rt.id
-            JOIN locations l ON r.location_id = l.id
-            WHERE rt.active = TRUE AND l.active = TRUE
+            LEFT JOIN resource_types rt ON r.type_id = rt.id
+            LEFT JOIN locations l ON r.location_id = l.id
+            WHERE (rt.active = TRUE OR rt.id IS NULL) AND (l.active = TRUE OR l.id IS NULL)
         `;
 
         const [recursos] = await db.execute(query, [end, start]);
