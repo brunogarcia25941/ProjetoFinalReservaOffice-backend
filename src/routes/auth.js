@@ -91,18 +91,40 @@ router.post('/refresh', authController.refreshToken);
  * /api/auth/logout:
  *   post:
  *     summary: Terminar sessão (Logout)
- *     description: Remove o Refresh Token da base de dados, invalidando a sessão atual.
+ *     description: Remove o Refresh Token específico da base de dados. Se nenhum token for enviado, remove todas as sessões do utilizador.
+ *     tags:
+ *       - Autenticação
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Sessão terminada com sucesso
+ */
+router.post('/logout', authMiddleware, authController.logout);
+
+/**
+ * @swagger
+ * /api/auth/logout-all:
+ *   post:
+ *     summary: Terminar todas as sessões (Logout Global)
+ *     description: Remove todos os Refresh Tokens do utilizador e incrementa a versão do token para invalidar Access Tokens.
  *     tags:
  *       - Autenticação
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Sessão terminada com sucesso
- *       401:
- *         description: Não autorizado (Token em falta ou inválido)
+ *         description: Todas as sessões terminadas
  */
-router.post('/logout', authMiddleware, authController.logout);
+router.post('/logout-all', authMiddleware, authController.logoutAll);
 
 /**
  * @swagger

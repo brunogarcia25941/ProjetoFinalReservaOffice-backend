@@ -64,6 +64,13 @@ exports.createBooking = async (req, res) => {
             [user_id, resource_id, start_time, end_time, 'confirmed']
         );
 
+        // 4.1 REGISTAR NO HISTÓRICO (Auditoria)
+        const newBookingData = { resource_id, start_time, end_time, status: 'confirmed' };
+        await connection.execute(
+            'INSERT INTO booking_history (booking_id, action, new_data, changed_by) VALUES (?, ?, ?, ?)',
+            [result.insertId, 'create', JSON.stringify(newBookingData), user_id]
+        );
+
         // 5. CONFIRMAR TRANSAÇÃO
         await connection.commit();
 
@@ -117,30 +124,51 @@ exports.cancelBooking = async (req, res) => {
     const booking_id = req.params.id;
     const user_id = req.user.id;
 
+    let connection;
     try {
-        const [bookings] = await db.execute(
-            'SELECT * FROM bookings WHERE id = ? AND user_id = ?', 
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+
+        const [bookings] = await connection.execute(
+            'SELECT * FROM bookings WHERE id = ? AND user_id = ? FOR UPDATE', 
             [booking_id, user_id]
         );
 
         if (bookings.length === 0) {
+            await connection.rollback();
             return res.status(404).json({ message: "Reserva não encontrada ou sem permissão." });
         }
 
-        if (bookings[0].status === 'cancelled') {
+        const oldBooking = bookings[0];
+
+        if (oldBooking.status === 'cancelled') {
+            await connection.rollback();
             return res.status(400).json({ message: "Esta reserva já está cancelada." });
         }
 
-        await db.execute(
+        await connection.execute(
             'UPDATE bookings SET status = ? WHERE id = ?',
             ['cancelled', booking_id]
         );
 
+        // REGISTAR NO HISTÓRICO
+        const oldData = { resource_id: oldBooking.resource_id, start_time: oldBooking.start_time, end_time: oldBooking.end_time, status: oldBooking.status };
+        const newData = { ...oldData, status: 'cancelled' };
+        
+        await connection.execute(
+            'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
+            [booking_id, 'cancel', JSON.stringify(oldData), JSON.stringify(newData), user_id]
+        );
+
+        await connection.commit();
         return res.status(200).json({ message: "Reserva cancelada com sucesso!" });
 
     } catch (error) {
+        if (connection) await connection.rollback();
         console.error("Erro ao cancelar reserva:", error);
         return res.status(500).json({ message: "Erro interno ao processar o cancelamento." });
+    } finally {
+        if (connection) connection.release();
     }
 };
 
@@ -175,7 +203,9 @@ exports.updateBooking = async (req, res) => {
             return res.status(404).json({ message: "Reserva não encontrada ou sem permissão." });
         }
 
-        if (bookings[0].status === 'cancelled') {
+        const oldBooking = bookings[0];
+
+        if (oldBooking.status === 'cancelled') {
             await connection.rollback();
             return res.status(400).json({ message: "Não é possível editar uma reserva cancelada." });
         }
@@ -219,6 +249,15 @@ exports.updateBooking = async (req, res) => {
         await connection.execute(
             'UPDATE bookings SET resource_id = ?, start_time = ?, end_time = ? WHERE id = ?',
             [resource_id, start_time, end_time, booking_id]
+        );
+
+        // REGISTAR NO HISTÓRICO
+        const oldData = { resource_id: oldBooking.resource_id, start_time: oldBooking.start_time, end_time: oldBooking.end_time, status: oldBooking.status };
+        const newData = { resource_id, start_time, end_time, status: oldBooking.status };
+
+        await connection.execute(
+            'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
+            [booking_id, 'update', JSON.stringify(oldData), JSON.stringify(newData), user_id]
         );
 
         await connection.commit();

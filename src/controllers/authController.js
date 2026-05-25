@@ -16,7 +16,13 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     try {
-        const [users] = await db.execute('SELECT id, role, token_version, password_hash FROM users WHERE email = ?', [email]);
+        const query = `
+            SELECT u.id, ur.name as role, u.token_version, u.password_hash 
+            FROM users u 
+            JOIN user_roles ur ON u.role_id = ur.id 
+            WHERE u.email = ? AND ur.active = TRUE
+        `;
+        const [users] = await db.execute(query, [email]);
         if (users.length === 0) return res.status(401).json({ message: 'Credenciais inválidas.' });
 
         const user = users[0];
@@ -38,7 +44,17 @@ exports.login = async (req, res) => {
         );
 
         const hashedRefreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
-        await db.execute('UPDATE users SET refresh_token = ? WHERE id = ?', [hashedRefreshToken, user.id]);
+        
+        // Data de expiração para a BD (7 dias)
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+        const mysqlExpiresAt = expiresAt.toISOString().slice(0, 19).replace('T', ' ');
+
+        // Guardar na tabela refresh_tokens em vez de diretamente no user
+        await db.execute(
+            'INSERT INTO refresh_tokens (user_id, token_hash, device_info, expires_at) VALUES (?, ?, ?, ?)', 
+            [user.id, hashedRefreshToken, req.headers['user-agent'] || 'Desconhecido', mysqlExpiresAt]
+        );
 
        
         res.json({
@@ -62,15 +78,25 @@ exports.refreshToken = async (req, res) => {
     try {
     
         const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-        
         const hashedRefreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
-        const [users] = await db.execute('SELECT id, role, token_version FROM users WHERE id = ? AND refresh_token = ?', [decoded.id, hashedRefreshToken]);
         
-        if (users.length === 0) {
-            return res.status(403).json({ message: 'Refresh Token inválido ou revogado. Faz login novamente.' });
+        // Verificar se o token existe na tabela e não expirou
+        const [tokens] = await db.execute(
+            'SELECT t.user_id, u.role, u.token_version FROM refresh_tokens t JOIN users u ON t.user_id = u.id WHERE t.token_hash = ? AND t.expires_at > NOW()', 
+            [hashedRefreshToken]
+        );
+        
+        if (tokens.length === 0) {
+            return res.status(403).json({ message: 'Refresh Token inválido, expirado ou revogado.' });
         }
 
-        const user = users[0];
+        const user = tokens[0];
+
+        // Se a versão do utilizador mudou (ex: logout global), invalidamos este token
+        if (user.token_version !== decoded.version) {
+            await db.execute('DELETE FROM refresh_tokens WHERE token_hash = ?', [hashedRefreshToken]);
+            return res.status(403).json({ message: 'Sessão invalidada. Por favor, faz login novamente.' });
+        }
 
   
         const newAccessToken = jwt.sign(
@@ -89,12 +115,36 @@ exports.refreshToken = async (req, res) => {
 
 exports.logout = async (req, res) => {
     const { id } = req.user; 
+    const { refreshToken } = req.body;
+
     try {
-        // Incrementa a versão do token para invalidar TODOS os access tokens atuais
-        await db.execute('UPDATE users SET refresh_token = NULL, token_version = token_version + 1 WHERE id = ?', [id]);
+        if (refreshToken) {
+            const hashedRefreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+            // Eliminar apenas esta sessão específica
+            await db.execute('DELETE FROM refresh_tokens WHERE user_id = ? AND token_hash = ?', [id, hashedRefreshToken]);
+        } else {
+            // Se não for passado o token, podemos optar por limpar todos os tokens deste user 
+            // (Comportamento de segurança extra se o token se perder)
+            await db.execute('DELETE FROM refresh_tokens WHERE user_id = ?', [id]);
+        }
         res.json({ message: 'Sessão terminada com sucesso.' });
     } catch (error) {
         res.status(500).json({ message: 'Erro ao terminar sessão.' });
+    }
+};
+
+/**
+ * Invalida todas as sessões de um utilizador (Logout Global)
+ */
+exports.logoutAll = async (req, res) => {
+    const { id } = req.user;
+    try {
+        // Incrementa a versão do token e remove todos os refresh tokens
+        await db.execute('UPDATE users SET token_version = token_version + 1 WHERE id = ?', [id]);
+        await db.execute('DELETE FROM refresh_tokens WHERE user_id = ?', [id]);
+        res.json({ message: 'Todas as sessões foram encerradas com sucesso.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Erro ao encerrar todas as sessões.' });
     }
 };
 
@@ -148,11 +198,14 @@ exports.register = async (req, res) => {
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
-        const role = "user";
+        
+        // Obter o ID do cargo 'user'
+        const [roles] = await db.execute('SELECT id FROM user_roles WHERE name = ?', ['user']);
+        const roleId = roles[0].id;
 
         const [result] = await db.execute(
-            'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-            [name.trim(), email, hashedPassword, role]
+            'INSERT INTO users (name, email, password_hash, role_id) VALUES (?, ?, ?, ?)',
+            [name.trim(), email, hashedPassword, roleId]
         );
 
         return res.status(201).json({ 
@@ -205,7 +258,9 @@ exports.forgotPassword = async (req, res) => {
             await sendEmail({
                 email: user.email,
                 subject: 'Recuperação de Password - Reserva Office',
-                message: message
+                message: message,
+                user_id: user.id,
+                email_type: 'password_reset'
             });
             res.status(200).json({ message: 'Email de recuperação enviado! Verifica a tua caixa de correio.' });
         } catch (emailError) {
@@ -274,7 +329,12 @@ exports.resetPassword = async (req, res) => {
 };
 exports.getAllUsers = async (req, res) => {
     try {
-        const [users] = await db.execute('SELECT id, name, email, role, created_at FROM users');
+        const query = `
+            SELECT u.id, u.name, u.email, ur.name as role, u.created_at 
+            FROM users u 
+            JOIN user_roles ur ON u.role_id = ur.id
+        `;
+        const [users] = await db.execute(query);
         res.status(200).json(users);
     } catch (error) {
         console.error('Erro ao listar users:', error);
@@ -296,12 +356,6 @@ exports.updateUser = async (req, res) => {
         return res.status(400).json({ message: "O formato do email é inválido." });
     }
 
-    // 3. Validação de Role (Cargo)
-    const rolesValidos = ['user', 'admin'];
-    if (!rolesValidos.includes(role)) {
-        return res.status(400).json({ message: "O cargo (role) selecionado é inválido. Escolha 'user' ou 'admin'." });
-    }
-
     try {
         const [userExists] = await db.execute('SELECT id FROM users WHERE id = ?', [id]);
         if (userExists.length === 0) {
@@ -314,9 +368,16 @@ exports.updateUser = async (req, res) => {
             return res.status(400).json({ message: "Este email já se encontra registado por outro utilizador." });
         }
 
+        // Obter o ID do cargo
+        const [roles] = await db.execute('SELECT id FROM user_roles WHERE name = ?', [role]);
+        if (roles.length === 0) {
+            return res.status(400).json({ message: "O cargo (role) selecionado é inválido." });
+        }
+        const roleId = roles[0].id;
+
         await db.execute(
-            'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?',
-            [name.trim(), email, role, id]
+            'UPDATE users SET name = ?, email = ?, role_id = ? WHERE id = ?',
+            [name.trim(), email, roleId, id]
         );
 
         res.json({ message: 'Utilizador atualizado com sucesso!' });
@@ -337,7 +398,13 @@ exports.deleteUser = async (req, res) => {
 
     try {
         // 2. Verificar se o utilizador a eliminar é um administrador
-        const [userToDelete] = await db.execute('SELECT role FROM users WHERE id = ?', [id]);
+        const query = `
+            SELECT ur.name as role 
+            FROM users u 
+            JOIN user_roles ur ON u.role_id = ur.id 
+            WHERE u.id = ?
+        `;
+        const [userToDelete] = await db.execute(query, [id]);
         
         if (userToDelete.length === 0) {
             return res.status(404).json({ message: 'Utilizador não encontrado.' });
@@ -345,7 +412,10 @@ exports.deleteUser = async (req, res) => {
 
         // 3. Se for um administrador, garantir que não é o único no sistema
         if (userToDelete[0].role === 'admin') {
-            const [adminCount] = await db.execute('SELECT COUNT(*) as total FROM users WHERE role = ?', ['admin']);
+            const [adminCount] = await db.execute(
+                'SELECT COUNT(*) as total FROM users u JOIN user_roles ur ON u.role_id = ur.id WHERE ur.name = ?', 
+                ['admin']
+            );
             
             if (adminCount[0].total <= 1) {
                 return res.status(400).json({ message: 'Não é possível eliminar o único administrador do sistema.' });

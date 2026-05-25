@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const morgan = require('morgan');
 const db = require('./config/db'); 
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
@@ -13,6 +14,10 @@ const app = express();
 
 // 0. Confiar em Proxies (Vercel, Cloudflare, etc.) para o Rate Limiting funcionar por IP real
 app.set('trust proxy', 1);
+
+// 0.1 LOGGING (Morgan)
+// Formato 'dev' dá output colorido com: :method :url :status :response-time ms - :res[content-length]
+app.use(morgan('dev'));
 
 // 1. SEGURANÇA (Headers HTTP e CORS)
 app.use(helmet({
