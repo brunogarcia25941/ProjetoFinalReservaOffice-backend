@@ -34,6 +34,11 @@ const runMigrations = async () => {
         } catch (e) { /* Coluna já existe */ }
 
         try {
+            await connection.query("ALTER TABLE resources ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            console.log('Coluna created_at adicionada aos recursos.');
+        } catch (e) { /* Coluna já existe */ }
+
+        try {
             await connection.query("ALTER TABLE users ADD COLUMN token_version INT NOT NULL DEFAULT 0");
             console.log('Coluna token_version adicionada.');
         } catch (e) { /* Coluna já existe */ }

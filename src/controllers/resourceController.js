@@ -7,7 +7,7 @@ exports.getAllResources = async (req, res) => {
             SELECT 
                 r.id, r.name, rt.name as type, 
                 l.building, l.floor, l.zone,
-                r.status, r.features, r.created_at 
+                r.status, r.features
             FROM resources r 
             LEFT JOIN resource_types rt ON r.type_id = rt.id
             LEFT JOIN locations l ON r.location_id = l.id
