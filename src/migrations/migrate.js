@@ -235,6 +235,59 @@ try {
             }
         } catch (e) { console.error('Erro no sistema de localização:', e.message); }
 
+        // 8. Tabela de Auditoria Geral (Audit Logs)
+        try {
+            await connection.query(`
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    pid INT,
+                    log_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    method VARCHAR(10),
+                    url TEXT,
+                    status_code INT,
+                    user_id VARCHAR(255) NULL,
+                    remote_address VARCHAR(45),
+                    request_data JSON NULL,
+                    msg TEXT,
+                    tracking_id VARCHAR(255)
+                )
+            `);
+            console.log('Tabela audit_logs verificada/criada.');
+        } catch (e) {
+            console.error('Erro ao criar tabela audit_logs:', e.message);
+        }
+
+        // 9. Índices de Performance
+        try {
+            // Índice para acelerar a verificação de disponibilidade e listagem por data
+            await connection.query("CREATE INDEX idx_bookings_time ON bookings (start_time, end_time)");
+            console.log('Índice idx_bookings_time criado.');
+        } catch (e) { /* Já existe */ }
+
+        try {
+            // Índice para acelerar a consulta de logs por data
+            await connection.query("CREATE INDEX idx_audit_logs_date ON audit_logs (log_date)");
+            console.log('Índice idx_audit_logs_date criado.');
+        } catch (e) { /* Já existe */ }
+
+        try {
+            // Índice para acelerar a consulta de logs por utilizador
+            await connection.query("CREATE INDEX idx_audit_logs_user ON audit_logs (user_id)");
+            console.log('Índice idx_audit_logs_user criado.');
+        } catch (e) { /* Já existe */ }
+
+        try {
+            // Índice para acelerar a pesquisa de recursos por nome
+            await connection.query("CREATE INDEX idx_resources_name ON resources (name)");
+            console.log('Índice idx_resources_name criado.');
+        } catch (e) { /* Já existe */ }
+
+        try {
+            // Índice para acelerar o filtro de estado (ativo/manutenção)
+            await connection.query("CREATE INDEX idx_resources_status ON resources (status)");
+            console.log('Índice idx_resources_status criado.');
+        } catch (e) { /* Já existe */ }
+
         console.log('--- Migrações Concluídas com Sucesso! ---');
         process.exit(0);
     } catch (err) {

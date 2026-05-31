@@ -1,8 +1,23 @@
 const express = require('express');
 const router = express.Router();
+const { body } = require('express-validator');
+const validate = require('../middlewares/validate');
 const bookingController = require('../controllers/bookingController');
 const verificarToken = require('../middlewares/auth');
 const verificarAdmin = require('../middlewares/admin');
+
+// Regras de Validação para Reservas
+const bookingValidation = [
+    body('resource_id').isInt().withMessage('O ID do recurso deve ser um número inteiro.'),
+    body('start_time').isISO8601().withMessage('A data de início deve estar num formato válido (ISO8601).'),
+    body('end_time').isISO8601().withMessage('A data de fim deve estar num formato válido (ISO8601)')
+        .custom((value, { req }) => {
+            if (new Date(value) <= new Date(req.body.start_time)) {
+                throw new Error('A data de fim deve ser posterior à data de início.');
+            }
+            return true;
+        }),
+];
 
 /**
  * @swagger
@@ -68,7 +83,7 @@ router.put('/:id/cancel', verificarToken, bookingController.cancelBooking);
  *       400:
  *         description: Conflito de horários ou dados inválidos.
  */
-router.put('/:id', verificarToken, bookingController.updateBooking);
+router.put('/:id', verificarToken, bookingValidation, validate, bookingController.updateBooking);
 
 /**
  * @swagger
@@ -144,6 +159,6 @@ router.get('/all', verificarToken, verificarAdmin, bookingController.getAllBooki
  *       401:
  *         description: Não autenticado.
  */
-router.post('/', verificarToken, bookingController.createBooking);
+router.post('/', verificarToken, bookingValidation, validate, bookingController.createBooking);
 
 module.exports = router;

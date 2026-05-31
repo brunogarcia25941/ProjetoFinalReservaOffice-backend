@@ -1,8 +1,31 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
+const { body } = require('express-validator');
+const validate = require('../middlewares/validate');
 const authController = require('../controllers/authController');
 const authMiddleware = require('../middlewares/auth');
+
+// Regras de Validação para Autenticação
+const loginValidation = [
+    body('email').isEmail().withMessage('Insira um email válido.').normalizeEmail(),
+    body('password').notEmpty().withMessage('A password é obrigatória.'),
+];
+
+const registerValidation = [
+    body('name').trim().notEmpty().withMessage('O nome é obrigatório.').isLength({ min: 2 }).withMessage('O nome deve ter pelo menos 2 caracteres.'),
+    body('email').isEmail().withMessage('Insira um email válido.').normalizeEmail(),
+    body('password').isLength({ min: 8 }).withMessage('A password deve ter pelo menos 8 caracteres.')
+        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/)
+        .withMessage('A password deve conter pelo menos uma letra maiúscula, uma minúscula e um número.'),
+];
+
+const resetPasswordValidation = [
+    body('token').notEmpty().withMessage('O token é obrigatório.'),
+    body('newPassword').isLength({ min: 8 }).withMessage('A password deve ter pelo menos 8 caracteres.')
+        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/)
+        .withMessage('A password deve conter pelo menos uma letra maiúscula, uma minúscula e um número.'),
+];
 
 // Configuração de Rate Limiting para proteger endpoints sensíveis
 const loginLimiter = rateLimit({
@@ -56,7 +79,7 @@ const forgotPasswordLimiter = rateLimit({
  *       401:
  *         description: Credenciais inválidas
  */
-router.post('/login', loginLimiter, authController.login);
+router.post('/login', loginLimiter, loginValidation, validate, authController.login);
 
 /**
  * @swagger
@@ -156,7 +179,7 @@ router.post('/logout-all', authMiddleware, authController.logoutAll);
  *       400:
  *         description: Dados inválidos ou email já registado
  */
-router.post('/register', registerLimiter, authController.register);
+router.post('/register', registerLimiter, registerValidation, validate, authController.register);
 
 /**
  * @swagger
@@ -209,7 +232,7 @@ router.post('/forgot-password', forgotPasswordLimiter, authController.forgotPass
  *       400:
  *         description: Token inválido ou expirado
  */
-router.post('/reset-password', authController.resetPassword);
+router.post('/reset-password', resetPasswordValidation, validate, authController.resetPassword);
 
 
 /**

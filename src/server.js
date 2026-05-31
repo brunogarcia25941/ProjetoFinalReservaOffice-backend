@@ -2,22 +2,59 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const morgan = require('morgan');
 const db = require('./config/db'); 
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsDoc = require('swagger-jsdoc');
-const adminRoutes = require('./routes/adminRoutes');
-const picklistRoutes = require('./routes/picklistRoutes');
+const logger = require('./logger');
+const pinoHttp = require('pino-http');
+const { randomUUID } = require('crypto');
 
 const app = express();
 
+// 0.1 LOGGING (Auditoria com Pino)
+const httpLogger = pinoHttp({
+    logger,
+    genReqId: (req) => req.headers['x-request-id'] || randomUUID(),
+    customProps: (req, res) => {
+        // Obter o corpo do pedido, removendo dados sensíveis
+        const body = req.body ? { ...req.body } : {};
+        const sensitiveFields = ['password', 'newPassword', 'token', 'refreshToken'];
+        sensitiveFields.forEach(field => {
+            if (body[field]) body[field] = '********';
+        });
+
+        return {
+            userId: req.user ? req.user.id : null,
+            remoteAddress: req.ip || req.connection.remoteAddress,
+            requestData: Object.keys(body).length > 0 ? body : null
+        };
+    },
+    customSuccessObject: (req, res, val) => ({
+        ...val,
+        statusCode: res.statusCode,
+    }),
+    customErrorObject: (req, res, err, val) => ({
+        ...val,
+        statusCode: res.statusCode,
+        errorMessage: err.message,
+    }),
+    serializers: {
+        req: (req) => ({
+            id: req.id,
+            method: req.method,
+            url: req.url,
+        }),
+        res: (res) => ({
+            statusCode: res.statusCode,
+        }),
+    },
+});
+
+app.use(httpLogger);
+
 // 0. Confiar em Proxies (Vercel, Cloudflare, etc.) para o Rate Limiting funcionar por IP real
 app.set('trust proxy', 1);
-
-// 0.1 LOGGING (Morgan)
-// Formato 'dev' dá output colorido com: :method :url :status :response-time ms - :res[content-length]
-app.use(morgan('dev'));
 
 // 1. SEGURANÇA (Headers HTTP e CORS)
 app.use(helmet({
@@ -41,6 +78,8 @@ app.use(express.json({ limit: '10kb' }));
 const resourceRoutes = require('./routes/resourceRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/adminRoutes');
+const picklistRoutes = require('./routes/picklistRoutes');
 
 app.use('/api/resources', resourceRoutes);
 app.use('/api/bookings', bookingRoutes);

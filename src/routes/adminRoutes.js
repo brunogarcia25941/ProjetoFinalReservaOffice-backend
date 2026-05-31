@@ -3,10 +3,59 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const authMiddleware = require('../middlewares/auth');
 const adminMiddleware = require('../middlewares/admin');
+const auditController = require('../controllers/auditController');
 
 // Aplica a proteção de Token e de Admin a TODAS as rotas deste ficheiro
 router.use(authMiddleware);
 router.use(adminMiddleware);
+
+/**
+ * @swagger
+ * /api/admin/audit-logs:
+ *   get:
+ *     summary: Listar logs de auditoria (Apenas Admin)
+ *     description: Devolve a lista das últimas operações realizadas no sistema.
+ *     tags:
+ *       - Admin - Auditoria
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 500
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       200:
+ *         description: Lista de logs obtida com sucesso.
+ */
+router.get('/audit-logs', auditController.getAllLogs);
+
+/**
+ * @swagger
+ * /api/admin/audit-logs/{id}:
+ *   get:
+ *     summary: Ver detalhes de um log (Apenas Admin)
+ *     tags:
+ *       - Admin - Auditoria
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Detalhes do log.
+ */
+router.get('/audit-logs/:id', auditController.getLogById);
 
 /**
  * @swagger
