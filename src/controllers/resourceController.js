@@ -148,12 +148,12 @@ exports.getResourcesWithAvailability = async (req, res) => {
 // Atualizar apenas a posição do recurso (para o Editor de Planta)
 exports.updateResourcePosition = async (req, res) => {
     const { id } = req.params;
-    const { pos_x, pos_y } = req.body;
+    const { pos_x, pos_y, rotation } = req.body;
 
     try {
         await db.execute(
-            'UPDATE resources SET pos_x = ?, pos_y = ? WHERE id = ?',
-            [pos_x, pos_y, id]
+            'UPDATE resources SET pos_x = ?, pos_y = ?, rotation = ? WHERE id = ?',
+            [pos_x, pos_y, rotation, id]
         );
         res.json({ message: 'Posição atualizada com sucesso!' });
     } catch (error) {
