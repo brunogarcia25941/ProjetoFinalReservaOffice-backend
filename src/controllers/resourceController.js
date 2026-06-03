@@ -7,7 +7,7 @@ exports.getAllResources = async (req, res) => {
             SELECT 
                 r.id, r.name, rt.name as type, 
                 l.building, l.floor, l.zone,
-                r.status, r.features
+                r.status, r.features, r.pos_x, r.pos_y
             FROM resources r 
             LEFT JOIN resource_types rt ON r.type_id = rt.id
             LEFT JOIN locations l ON r.location_id = l.id
@@ -142,5 +142,22 @@ exports.getResourcesWithAvailability = async (req, res) => {
     } catch (error) {
         console.error("Erro ao procurar disponibilidade:", error);
         return res.status(500).json({ message: "Erro interno ao verificar disponibilidade." });
+    }
+};
+
+// Atualizar apenas a posição do recurso (para o Editor de Planta)
+exports.updateResourcePosition = async (req, res) => {
+    const { id } = req.params;
+    const { pos_x, pos_y } = req.body;
+
+    try {
+        await db.execute(
+            'UPDATE resources SET pos_x = ?, pos_y = ? WHERE id = ?',
+            [pos_x, pos_y, id]
+        );
+        res.json({ message: 'Posição atualizada com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao atualizar posição:', error);
+        res.status(500).json({ message: 'Erro ao guardar posição.' });
     }
 };

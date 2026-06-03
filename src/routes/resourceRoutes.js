@@ -144,4 +144,7 @@ router.put('/:id', authMiddleware, adminMiddleware, resourceController.updateRes
  */
 router.delete('/:id', authMiddleware, adminMiddleware, resourceController.deleteResource);
 
+// Rota específica para atualizar a posição no mapa
+router.put('/:id/position', authMiddleware, adminMiddleware, resourceController.updateResourcePosition);
+
 module.exports = router;
