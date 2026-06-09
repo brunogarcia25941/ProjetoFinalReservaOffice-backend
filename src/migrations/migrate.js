@@ -296,6 +296,14 @@ try {
     } finally {
         if (connection) connection.release();
     }
+
+
+    // Adicionar colunas de posicionamento à tabela resources
+    try {
+        await connection.query("ALTER TABLE resources ADD COLUMN pos_x INT NULL, ADD COLUMN pos_y INT NULL, ADD COLUMN rotation INT NOT NULL DEFAULT 0");
+        console.log('Colunas pos_x, pos_y e rotation adicionadas aos recursos.');
+    } catch (e) { /* Colunas já existem */ }
+
 };
 
 runMigrations();
