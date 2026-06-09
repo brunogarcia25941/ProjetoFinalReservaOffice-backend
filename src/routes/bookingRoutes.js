@@ -15,7 +15,9 @@ const createBookingValidation = [
             throw new Error('end_time must be after start_time');
         }
         return true;
-    })
+    }),
+    body('guests').optional().isArray().withMessage('Guests deve ser um array.'),
+    body('guests.*').optional().isEmail().withMessage('Todos os convidados devem ter um email válido.')
 ];
 
 const updateBookingValidation = [
@@ -27,7 +29,9 @@ const updateBookingValidation = [
             throw new Error('end_time must be after start_time');
         }
         return true;
-    })
+    }),
+    body('guests').optional().isArray().withMessage('Guests deve ser um array.'),
+    body('guests.*').optional().isEmail().withMessage('Todos os convidados devem ter um email válido.')
 ];
 
 const cancelBookingValidation = [

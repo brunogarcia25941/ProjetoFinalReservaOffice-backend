@@ -85,4 +85,23 @@ router.get('/locations', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/picklists/users:
+ *   get:
+ *     summary: Obter utilizadores para autocompletar convidados
+ *     tags: [Picklists]
+ *     security:
+ *       - bearerAuth: []
+ */
+const verificarToken = require('../middlewares/auth');
+router.get('/users', verificarToken, async (req, res) => {
+    try {
+        const [users] = await db.execute('SELECT id, name, email FROM users');
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ message: "Erro ao obter utilizadores." });
+    }
+});
+
 module.exports = router;

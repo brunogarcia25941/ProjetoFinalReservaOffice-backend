@@ -351,6 +351,27 @@ try {
             console.log('Chave estrangeira home_office_id adicionada.');
         } catch (e) { /* FK já existe */ }
 
+        // 7.3. Tabela de Convidados em Reservas (booking_guests)
+        try {
+            await connection.query(`
+                CREATE TABLE IF NOT EXISTS booking_guests (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    booking_id INT NOT NULL,
+                    user_id INT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    name VARCHAR(255) NULL,
+                    status ENUM('pending', 'accepted', 'declined') DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+                    UNIQUE KEY unique_booking_guest (booking_id, email)
+                )
+            `);
+            console.log('Tabela booking_guests verificada/criada.');
+        } catch (e) {
+            console.error('Erro ao criar tabela booking_guests:', e.message);
+        }
+
         // 8. Tabela de Auditoria Geral (Audit Logs)
         try {
             await connection.query(`
