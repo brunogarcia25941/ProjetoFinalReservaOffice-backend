@@ -13,21 +13,21 @@ exports.createTicket = async (req, res) => {
 
     try {
         const [result] = await db.execute(
-            'INSERT INTO tickets (resource_id, reported_by, title, description, urgency, status) VALUES (?, ?, ?, ?, ?, "pending")',
+            "INSERT INTO tickets (resource_id, reported_by, title, description, urgency, status) VALUES (?, ?, ?, ?, ?, 'pending')",
             [resource_id || null, reported_by, title, description, urgency || 'medium']
         );
         const ticketId = result.insertId;
 
         // Se a urgência for Alta e tiver recurso associado, coloca o recurso em manutenção automaticamente
         if (urgency === 'high' && resource_id) {
-            await db.execute('UPDATE resources SET status = "maintenance" WHERE id = ?', [resource_id]);
+            await db.execute("UPDATE resources SET status = 'maintenance' WHERE id = ?", [resource_id]);
             await cancelarReservasENotificar(resource_id, 'maintenance');
         }
 
         // Notificar técnicos por email (se houver técnicos registados)
         try {
             const [techs] = await db.execute(
-                'SELECT u.email, u.name FROM users u JOIN user_roles ur ON u.role_id = ur.id WHERE ur.name = "tecnico"'
+                "SELECT u.email, u.name FROM users u JOIN user_roles ur ON u.role_id = ur.id WHERE ur.name = 'tecnico'"
             );
 
             for (const tech of techs) {
@@ -157,7 +157,7 @@ exports.assignTicket = async (req, res) => {
         }
 
         await db.execute(
-            'UPDATE tickets SET assigned_to = ?, status = "in_progress" WHERE id = ?',
+            "UPDATE tickets SET assigned_to = ?, status = 'in_progress' WHERE id = ?",
             [technicianId, id]
         );
 
@@ -214,7 +214,7 @@ exports.updateTicketStatus = async (req, res) => {
             
             // Verifica se existem OUTROS tickets ativos de urgência alta para este recurso
             const [otherHighUrgency] = await db.execute(
-                'SELECT id FROM tickets WHERE resource_id = ? AND status IN ("pending", "in_progress") AND urgency = "high" AND id != ?',
+                "SELECT id FROM tickets WHERE resource_id = ? AND status IN ('pending', 'in_progress') AND urgency = 'high' AND id != ?",
                 [resId, id]
             );
 
