@@ -1,22 +1,37 @@
 const express = require('express');
 const router = express.Router();
-const { body } = require('express-validator');
+const { body, param, query } = require('express-validator');
 const validate = require('../middlewares/validate');
 const bookingController = require('../controllers/bookingController');
 const verificarToken = require('../middlewares/auth');
 const verificarAdmin = require('../middlewares/admin');
 
 // Regras de Validação para Reservas
-const bookingValidation = [
-    body('resource_id').isInt().withMessage('O ID do recurso deve ser um número inteiro.'),
-    body('start_time').isISO8601().withMessage('A data de início deve estar num formato válido (ISO8601).'),
-    body('end_time').isISO8601().withMessage('A data de fim deve estar num formato válido (ISO8601)')
-        .custom((value, { req }) => {
-            if (new Date(value) <= new Date(req.body.start_time)) {
-                throw new Error('A data de fim deve ser posterior à data de início.');
-            }
-            return true;
-        }),
+const createBookingValidation = [
+    body('resource_id').isInt(),
+    body('start_time').isISO8601(),
+    body('end_time').isISO8601().custom((value, { req }) => {
+        if (new Date(value) <= new Date(req.body.start_time)) {
+            throw new Error('end_time must be after start_time');
+        }
+        return true;
+    })
+];
+
+const updateBookingValidation = [
+    param('id').isInt(),
+    body('resource_id').isInt(),
+    body('start_time').isISO8601(),
+    body('end_time').isISO8601().custom((value, { req }) => {
+        if (new Date(value) <= new Date(req.body.start_time)) {
+            throw new Error('end_time must be after start_time');
+        }
+        return true;
+    })
+];
+
+const cancelBookingValidation = [
+    param('id').isInt()
 ];
 
 /**
@@ -46,7 +61,36 @@ const bookingValidation = [
  *       401:
  *         description: Não autenticado.
  */
-router.put('/:id/cancel', verificarToken, bookingController.cancelBooking);
+router.put('/:id/cancel', verificarToken, cancelBookingValidation, validate, bookingController.cancelBooking);
+
+/**
+ * @swagger
+ * /api/bookings/{id}/end:
+ *   put:
+ *     summary: Terminar uma reserva em curso mais cedo
+ *     description: Altera a data de fim de uma reserva ativa para a hora atual, libertando o recurso.
+ *     tags:
+ *       - Reservas
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID da reserva a terminar
+ *     responses:
+ *       200:
+ *         description: Reserva terminada com sucesso.
+ *       400:
+ *         description: A reserva não pode ser terminada (já acabou, foi cancelada ou ainda não começou).
+ *       404:
+ *         description: Reserva não encontrada ou não pertence ao utilizador.
+ *       401:
+ *         description: Não autenticado.
+ */
+router.put('/:id/end', verificarToken, [param('id').isInt()], validate, bookingController.endBookingEarly);
 
 /**
  * @swagger
@@ -83,7 +127,7 @@ router.put('/:id/cancel', verificarToken, bookingController.cancelBooking);
  *       400:
  *         description: Conflito de horários ou dados inválidos.
  */
-router.put('/:id', verificarToken, bookingValidation, validate, bookingController.updateBooking);
+router.put('/:id', verificarToken, updateBookingValidation, validate, bookingController.updateBooking);
 
 /**
  * @swagger
@@ -159,6 +203,6 @@ router.get('/all', verificarToken, verificarAdmin, bookingController.getAllBooki
  *       401:
  *         description: Não autenticado.
  */
-router.post('/', verificarToken, bookingValidation, validate, bookingController.createBooking);
+router.post('/', verificarToken, createBookingValidation, validate, bookingController.createBooking);
 
 module.exports = router;

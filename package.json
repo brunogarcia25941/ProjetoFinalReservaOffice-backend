@@ -22,10 +22,12 @@
     "express-validator": "^7.3.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
+    "konva": "^10.3.0",
     "mysql2": "^3.19.0",
     "nodemailer": "^8.0.3",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "react-konva": "^19.2.4",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   },

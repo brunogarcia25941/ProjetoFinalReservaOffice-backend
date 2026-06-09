@@ -173,6 +173,65 @@ exports.cancelBooking = async (req, res) => {
     }
 };
 
+// Terminar uma reserva a decorrer mais cedo
+exports.endBookingEarly = async (req, res) => {
+    const booking_id = req.params.id;
+    const user_id = req.user.id;
+
+    let connection;
+    try {
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+
+        const [bookings] = await connection.execute(
+            'SELECT * FROM bookings WHERE id = ? AND user_id = ? FOR UPDATE', 
+            [booking_id, user_id]
+        );
+
+        if (bookings.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: "Reserva não encontrada ou sem permissão." });
+        }
+
+        const booking = bookings[0];
+        const now = new Date();
+        const startTime = new Date(booking.start_time);
+        const endTime = new Date(booking.end_time);
+
+        if (booking.status !== 'confirmed') {
+            await connection.rollback();
+            return res.status(400).json({ message: "Apenas reservas confirmadas podem ser terminadas." });
+        }
+
+        // Gera a data atual no fuso horário de Portugal para guardar corretamente na BD
+        const mysqlNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Lisbon', hour12: false }).replace('T', ' ');
+
+        await connection.execute(
+            'UPDATE bookings SET end_time = ? WHERE id = ?',
+            [mysqlNow, booking_id]
+        );
+
+        // REGISTAR NO HISTÓRICO
+        const oldData = { resource_id: booking.resource_id, start_time: booking.start_time, end_time: booking.end_time, status: booking.status };
+        const newData = { ...oldData, end_time: mysqlNow };
+        
+        await connection.execute(
+            'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
+            [booking_id, 'update', JSON.stringify(oldData), JSON.stringify(newData), user_id]
+        );
+
+        await connection.commit();
+        return res.status(200).json({ message: "Reserva terminada com sucesso. Obrigado por libertar o recurso!" });
+
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error("Erro ao terminar reserva:", error);
+        return res.status(500).json({ message: "Erro interno ao processar a operação." });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
 // Atualizar reserva existente
 exports.updateBooking = async (req, res) => {
     const booking_id = req.params.id;

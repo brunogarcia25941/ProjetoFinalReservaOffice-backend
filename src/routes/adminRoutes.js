@@ -1,9 +1,22 @@
 const express = require('express');
 const router = express.Router();
+const { body, param, query } = require('express-validator');
+const validate = require('../middlewares/validate');
 const authController = require('../controllers/authController');
 const authMiddleware = require('../middlewares/auth');
 const adminMiddleware = require('../middlewares/admin');
 const auditController = require('../controllers/auditController');
+
+const updateUserValidation = [
+    param('id').isInt(),
+    body('name').trim().notEmpty(),
+    body('email').isEmail().normalizeEmail(),
+    body('role').isString().notEmpty()
+];
+
+const deleteUserValidation = [
+    param('id').isInt()
+];
 
 // Aplica a proteção de Token e de Admin a TODAS as rotas deste ficheiro
 router.use(authMiddleware);
@@ -115,7 +128,7 @@ router.get('/users', authController.getAllUsers);
  *       404:
  *         description: Utilizador não encontrado.
  */
-router.put('/users/:id', authController.updateUser);
+router.put('/users/:id', updateUserValidation, validate, authController.updateUser);
 
 /**
  * @swagger
@@ -143,6 +156,6 @@ router.put('/users/:id', authController.updateUser);
  *       404:
  *         description: Utilizador não encontrado.
  */
-router.delete('/users/:id', authController.deleteUser);
+router.delete('/users/:id', deleteUserValidation, validate, authController.deleteUser);
 
 module.exports = router;

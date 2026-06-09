@@ -1,8 +1,40 @@
 const express = require('express');
 const router = express.Router();
+const { body, param, query } = require('express-validator');
+const validate = require('../middlewares/validate');
 const resourceController = require('../controllers/resourceController');
 const authMiddleware = require('../middlewares/auth');
 const adminMiddleware = require('../middlewares/admin');
+
+const getAvailabilityValidation = [
+    query('start').isString().notEmpty(),
+    query('end').isString().notEmpty()
+];
+
+const createResourceValidation = [
+    body('name').trim().notEmpty(),
+    body('type').isString().notEmpty(),
+    body('floor').isInt()
+];
+
+const updateResourceValidation = [
+    param('id').isInt(),
+    body('name').trim().notEmpty(),
+    body('type').isString().notEmpty(),
+    body('status').isString().notEmpty(),
+    body('floor').isInt()
+];
+
+const updatePositionValidation = [
+    param('id').isInt(),
+    body('pos_x').optional({ nullable: true }).isNumeric(),
+    body('pos_y').optional({ nullable: true }).isNumeric(),
+    body('rotation').optional({ nullable: true }).isNumeric()
+];
+
+const deleteResourceValidation = [
+    param('id').isInt()
+];
 
 // --- ROTAS PARA UTILIZADORES AUTENTICADOS ---
 
@@ -34,7 +66,7 @@ router.get('/', authMiddleware, resourceController.getAllResources);
  *       200:
  *         description: Sucesso.
  */
-router.get('/availability', authMiddleware, resourceController.getResourcesWithAvailability);
+router.get('/availability', authMiddleware, getAvailabilityValidation, validate, resourceController.getResourcesWithAvailability);
 
 
 // --- ROTAS DE ADMINISTRADOR ---
@@ -73,7 +105,7 @@ router.get('/availability', authMiddleware, resourceController.getResourcesWithA
  *       403:
  *         description: Acesso negado.
  */
-router.post('/', authMiddleware, adminMiddleware, resourceController.createResource);
+router.post('/', authMiddleware, adminMiddleware, createResourceValidation, validate, resourceController.createResource);
 
 /**
  * @swagger
@@ -115,7 +147,7 @@ router.post('/', authMiddleware, adminMiddleware, resourceController.createResou
  *       404:
  *         description: Recurso não encontrado.
  */
-router.put('/:id', authMiddleware, adminMiddleware, resourceController.updateResource);
+router.put('/:id', authMiddleware, adminMiddleware, updateResourceValidation, validate, resourceController.updateResource);
 
 /**
  * @swagger
@@ -142,9 +174,9 @@ router.put('/:id', authMiddleware, adminMiddleware, resourceController.updateRes
  *       404:
  *         description: Recurso não encontrado.
  */
-router.delete('/:id', authMiddleware, adminMiddleware, resourceController.deleteResource);
+router.delete('/:id', authMiddleware, adminMiddleware, deleteResourceValidation, validate, resourceController.deleteResource);
 
 // Rota específica para atualizar a posição no mapa
-router.put('/:id/position', authMiddleware, adminMiddleware, resourceController.updateResourcePosition);
+router.put('/:id/position', authMiddleware, adminMiddleware, updatePositionValidation, validate, resourceController.updateResourcePosition);
 
 module.exports = router;
