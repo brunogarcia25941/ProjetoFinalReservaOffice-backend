@@ -55,21 +55,26 @@ const dbStream = new Writable({
 });
 
 // Configuração do Logger com múltiplos destinos
+const streams = [
+    { stream: process.stdout }, // Destino 1: Consola
+    { stream: dbStream }        // Destino 2: Base de Dados
+];
+
+// Destino 3: Ficheiro físico (Apenas se NÃO estiver na Vercel ou se estiver em dev)
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    streams.push({ 
+        stream: pino.destination({
+            dest: path.join(__dirname, '../logs/app.log'),
+            sync: true
+        })
+    });
+}
+
 const logger = pino(
     {
         level: 'info',
     },
-    pino.multistream([
-        { stream: process.stdout }, // Destino 1: Consola
-        { stream: dbStream },       // Destino 2: Base de Dados
-        { 
-            // Destino 3: Ficheiro físico
-            stream: pino.destination({
-                dest: path.join(__dirname, '../logs/app.log'),
-                sync: true // Escrever imediatamente (melhor para debug)
-            })
-        }
-    ])
+    pino.multistream(streams)
 );
 
 module.exports = logger;

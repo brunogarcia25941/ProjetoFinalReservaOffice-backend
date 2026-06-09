@@ -25,8 +25,8 @@ const httpLogger = pinoHttp({
         });
 
         return {
-            userId: req.user ? req.user.id : null,
-            remoteAddress: req.ip || req.connection.remoteAddress,
+            userId: req && req.user ? req.user.id : null,
+            remoteAddress: req.ip || (req.connection && req.connection.remoteAddress) || 'unknown',
             requestData: Object.keys(body).length > 0 ? body : null
         };
     },
