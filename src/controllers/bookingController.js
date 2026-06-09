@@ -94,6 +94,7 @@ exports.createBooking = async (req, res) => {
 exports.getUserBookings = async (req, res) => {
     const user_id = req.user.id; 
 
+    req.log.info(`Procurando reservas para o utilizador ID: ${user_id}`);
     try {
         const query = `
             SELECT 

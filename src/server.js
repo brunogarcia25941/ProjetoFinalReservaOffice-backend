@@ -15,7 +15,11 @@ const app = express();
 // 0.1 LOGGING (Auditoria com Pino)
 const httpLogger = pinoHttp({
     logger,
-    genReqId: (req) => req.headers['x-request-id'] || randomUUID(),
+    genReqId: (req, res) => {
+        const id = req.headers['x-request-id'] || randomUUID();
+        res.setHeader('X-Request-ID', id);
+        return id;
+    },
     customProps: (req, res) => {
         // Obter o corpo do pedido, removendo dados sensíveis
         const body = req.body ? { ...req.body } : {};

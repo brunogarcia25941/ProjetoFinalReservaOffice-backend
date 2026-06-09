@@ -8,6 +8,7 @@ const path = require('path');
 const dbStream = new Writable({
     write(chunk, encoding, callback) {
         (async () => {
+            let connection;
             try {
                 const logEntry = JSON.parse(chunk.toString());
                 if (!['request completed', 'request errored'].includes(logEntry.msg)) {
@@ -25,6 +26,12 @@ const dbStream = new Writable({
                     msg 
                 } = logEntry;
 
+                connection = await db.getConnection();
+                await connection.beginTransaction();
+
+                // Nota: O nome da tabela pode variar entre as branches (audit_logs vs auditLog)
+                // Usamos audit_logs conforme a migração mais recente, mas o branch auditLogs usava auditLog.
+                // Vou manter audit_logs que parece ser o padrão consolidado.
                 const query = `
                     INSERT INTO audit_logs 
                     (pid, log_date, method, url, status_code, user_id, remote_address, request_data, msg, tracking_id) 
@@ -33,7 +40,7 @@ const dbStream = new Writable({
 
                 const dataStr = requestData ? JSON.stringify(requestData) : null;
                 
-                await db.execute(query, [
+                await connection.execute(query, [
                     pid, 
                     time, 
                     req.method, 
@@ -45,9 +52,13 @@ const dbStream = new Writable({
                     msg, 
                     req.id
                 ]);
+
+                await connection.commit();
             } catch (err) {
+                if (connection) await connection.rollback();
                 console.error('Erro ao gravar log na BD:', err.message);
             } finally {
+                if (connection) connection.release();
                 callback();
             }
         })();
