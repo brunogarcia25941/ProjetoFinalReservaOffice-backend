@@ -261,3 +261,5 @@ exports.updateResourcePosition = async (req, res) => {
         res.status(500).json({ message: 'Erro ao guardar posição.' });
     }
 };
+
+exports.cancelarReservasENotificar = cancelarReservasENotificar;

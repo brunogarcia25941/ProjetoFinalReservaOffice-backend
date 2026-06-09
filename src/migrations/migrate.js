@@ -437,6 +437,40 @@ try {
             console.error('Erro ao adicionar parent_booking_id:', e.message);
         }
 
+        // 9.2 Adicionar role 'tecnico' às roles
+        try {
+            await connection.query("INSERT IGNORE INTO user_roles (name, label) VALUES ('tecnico', 'Técnico')");
+            console.log("Role 'tecnico' verificada/inserida.");
+        } catch (e) {
+            console.error("Erro ao adicionar role 'tecnico':", e.message);
+        }
+
+        // 9.3 Criar Tabela de Tickets
+        try {
+            await connection.query(`
+                CREATE TABLE IF NOT EXISTS tickets (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    resource_id INT NULL,
+                    reported_by INT NOT NULL,
+                    assigned_to INT NULL,
+                    title VARCHAR(150) NOT NULL,
+                    description TEXT NOT NULL,
+                    urgency ENUM('low', 'medium', 'high') DEFAULT 'medium',
+                    status ENUM('pending', 'in_progress', 'resolved', 'cancelled') DEFAULT 'pending',
+                    resolution_notes TEXT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    resolved_at DATETIME NULL,
+                    FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE SET NULL,
+                    FOREIGN KEY (reported_by) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+                )
+            `);
+            console.log('Tabela tickets verificada/criada.');
+        } catch (e) {
+            console.error('Erro ao criar tabela tickets:', e.message);
+        }
+
         console.log('--- Migrações Concluídas com Sucesso! ---');
         process.exit(0);
     } catch (err) {
