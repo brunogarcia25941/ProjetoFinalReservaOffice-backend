@@ -17,7 +17,8 @@ const createBookingValidation = [
         return true;
     }),
     body('guests').optional().isArray().withMessage('Guests deve ser um array.'),
-    body('guests.*').optional().isEmail().withMessage('Todos os convidados devem ter um email válido.')
+    body('guests.*').optional().isEmail().withMessage('Todos os convidados devem ter um email válido.'),
+    body('extra_resource_id').optional({ nullable: true }).isInt().withMessage('Extra resource ID deve ser um número inteiro.')
 ];
 
 const updateBookingValidation = [
@@ -31,7 +32,8 @@ const updateBookingValidation = [
         return true;
     }),
     body('guests').optional().isArray().withMessage('Guests deve ser um array.'),
-    body('guests.*').optional().isEmail().withMessage('Todos os convidados devem ter um email válido.')
+    body('guests.*').optional().isEmail().withMessage('Todos os convidados devem ter um email válido.'),
+    body('extra_resource_id').optional({ nullable: true }).isInt().withMessage('Extra resource ID deve ser um número inteiro.')
 ];
 
 const cancelBookingValidation = [

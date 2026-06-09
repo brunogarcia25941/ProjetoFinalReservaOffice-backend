@@ -425,6 +425,18 @@ try {
             console.log('Índice idx_resources_status criado.');
         } catch (e) { /* Já existe */ }
 
+        // 9.1 Adicionar parent_booking_id à tabela bookings
+        try {
+            const [cols] = await connection.query("SHOW COLUMNS FROM bookings LIKE 'parent_booking_id'");
+            if (cols.length === 0) {
+                await connection.query("ALTER TABLE bookings ADD COLUMN parent_booking_id INT NULL");
+                await connection.query("ALTER TABLE bookings ADD FOREIGN KEY (parent_booking_id) REFERENCES bookings(id) ON DELETE CASCADE");
+                console.log('Coluna parent_booking_id e FK adicionadas à tabela bookings.');
+            }
+        } catch (e) {
+            console.error('Erro ao adicionar parent_booking_id:', e.message);
+        }
+
         console.log('--- Migrações Concluídas com Sucesso! ---');
         process.exit(0);
     } catch (err) {

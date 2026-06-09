@@ -3,7 +3,7 @@ const sendEmail = require('../utils/sendEmail');
 
 // Criar nova reserva com validação de conflitos
 exports.createBooking = async (req, res) => {
-    const { resource_id, start_time, end_time, guests } = req.body;
+    const { resource_id, start_time, end_time, guests, extra_resource_id } = req.body;
     const user_id = req.user.id;
 
     if (!resource_id || !start_time || !end_time) {
@@ -66,21 +66,71 @@ exports.createBooking = async (req, res) => {
                 message: "Lamentamos, mas este recurso já se encontra reservado para o horário selecionado." 
             });
         }
+
+        // 3.1 VERIFICAR MONITOR EXTRA SE ENVIADO
+        let hasExtra = false;
+        if (extra_resource_id) {
+            const queryExtra = `
+                SELECT r.status, r.name, rt.name AS resource_type
+                FROM resources r
+                JOIN resource_types rt ON r.type_id = rt.id
+                WHERE r.id = ?
+                FOR UPDATE
+            `;
+            const [extras] = await connection.execute(queryExtra, [extra_resource_id]);
+            if (extras.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ message: "O monitor extra selecionado não existe." });
+            }
+            if (extras[0].status !== 'active') {
+                await connection.rollback();
+                return res.status(400).json({ message: "O monitor extra selecionado está em manutenção." });
+            }
+            if (extras[0].resource_type !== 'monitor') {
+                await connection.rollback();
+                return res.status(400).json({ message: "O recurso extra selecionado deve ser um monitor." });
+            }
+            
+            // Verificar conflitos do monitor extra
+            const [extraConflitos] = await connection.execute(queryVerificacao, [extra_resource_id, end_time, start_time]);
+            if (extraConflitos.length > 0) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: "Lamentamos, mas o monitor extra selecionado já se encontra reservado para o horário."
+                });
+            }
+            hasExtra = true;
+        }
         
-        // 4. INSERIR A RESERVA
+        // 4. INSERIR A RESERVA PRINCIPAL
         const [result] = await connection.execute(
             'INSERT INTO bookings (user_id, resource_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?)',
             [user_id, resource_id, start_time, end_time, 'confirmed']
         );
+        const mainBookingId = result.insertId;
 
         // 4.1 REGISTAR NO HISTÓRICO (Auditoria)
         const newBookingData = { resource_id, start_time, end_time, status: 'confirmed' };
         await connection.execute(
             'INSERT INTO booking_history (booking_id, action, new_data, changed_by) VALUES (?, ?, ?, ?)',
-            [result.insertId, 'create', JSON.stringify(newBookingData), user_id]
+            [mainBookingId, 'create', JSON.stringify(newBookingData), user_id]
         );
 
-        // 4.2 PROCESSAR CONVIDADOS SE FOR SALA
+        // 4.2 INSERIR MONITOR EXTRA SE APLICÁVEL
+        if (hasExtra) {
+            const [extraResult] = await connection.execute(
+                'INSERT INTO bookings (user_id, resource_id, start_time, end_time, status, parent_booking_id) VALUES (?, ?, ?, ?, ?, ?)',
+                [user_id, extra_resource_id, start_time, end_time, 'confirmed', mainBookingId]
+            );
+            
+            const extraBookingData = { resource_id: extra_resource_id, start_time, end_time, status: 'confirmed', parent_booking_id: mainBookingId };
+            await connection.execute(
+                'INSERT INTO booking_history (booking_id, action, new_data, changed_by) VALUES (?, ?, ?, ?)',
+                [extraResult.insertId, 'create', JSON.stringify(extraBookingData), user_id]
+            );
+        }
+
+        // 4.3 PROCESSAR CONVIDADOS SE FOR SALA
         let guestDetails = [];
         if (resource_type === 'room' && guests && Array.isArray(guests)) {
             const cleanGuests = [...new Set(guests.map(e => e.trim().toLowerCase()).filter(Boolean))];
@@ -99,7 +149,7 @@ exports.createBooking = async (req, res) => {
 
                 await connection.execute(
                     'INSERT INTO booking_guests (booking_id, user_id, email, name, status) VALUES (?, ?, ?, ?, ?)',
-                    [result.insertId, guestUserId, email, guestName, 'pending']
+                    [mainBookingId, guestUserId, email, guestName, 'pending']
                 );
 
                 guestDetails.push({
@@ -162,7 +212,7 @@ Equipa Reserva Office`;
 
         return res.status(201).json({ 
             message: "Reserva efetuada com sucesso!", 
-            booking_id: result.insertId 
+            booking_id: mainBookingId 
         });
 
     } catch (error) {
@@ -192,12 +242,13 @@ exports.getUserBookings = async (req, res) => {
             FROM bookings b
             JOIN resources r ON b.resource_id = r.id
             JOIN resource_types rt ON r.type_id = rt.id
-            WHERE b.user_id = ?
+            WHERE b.user_id = ? AND b.parent_booking_id IS NULL
             ORDER BY b.start_time DESC
         `;
         
         const [bookings] = await db.execute(query, [user_id]);
         for (const booking of bookings) {
+            // Carregar convidados
             if (booking.resource_type === 'room') {
                 const [guests] = await db.execute(
                     'SELECT email, name, status FROM booking_guests WHERE booking_id = ?',
@@ -206,6 +257,24 @@ exports.getUserBookings = async (req, res) => {
                 booking.guests = guests;
             } else {
                 booking.guests = [];
+            }
+
+            // Carregar monitor extra se existir
+            const [childBookings] = await db.execute(
+                `SELECT b.id AS booking_id, b.resource_id, r.name AS resource_name 
+                 FROM bookings b
+                 JOIN resources r ON b.resource_id = r.id
+                 WHERE b.parent_booking_id = ? AND b.status = 'confirmed'`,
+                [booking.booking_id]
+            );
+            if (childBookings.length > 0) {
+                booking.extra = {
+                    booking_id: childBookings[0].booking_id,
+                    resource_id: childBookings[0].resource_id,
+                    resource_name: childBookings[0].resource_name
+                };
+            } else {
+                booking.extra = null;
             }
         }
         return res.status(200).json(bookings);
@@ -252,12 +321,13 @@ exports.cancelBooking = async (req, res) => {
             return res.status(400).json({ message: "Esta reserva já está cancelada." });
         }
 
+        // Cancelar a reserva principal e a filho (se existir)
         await connection.execute(
-            'UPDATE bookings SET status = ? WHERE id = ?',
-            ['cancelled', booking_id]
+            "UPDATE bookings SET status = ? WHERE id = ? OR parent_booking_id = ?",
+            ['cancelled', booking_id, booking_id]
         );
 
-        // REGISTAR NO HISTÓRICO
+        // REGISTAR NO HISTÓRICO DA PRINCIPAL
         const oldData = { resource_id: oldBooking.resource_id, start_time: oldBooking.start_time, end_time: oldBooking.end_time, status: oldBooking.status };
         const newData = { ...oldData, status: 'cancelled' };
         
@@ -265,6 +335,22 @@ exports.cancelBooking = async (req, res) => {
             'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
             [booking_id, 'cancel', JSON.stringify(oldData), JSON.stringify(newData), user_id]
         );
+
+        // REGISTAR NO HISTÓRICO DA SECUNDÁRIA (se existir)
+        const [childBookings] = await connection.execute(
+            "SELECT id, resource_id, start_time, end_time, status FROM bookings WHERE parent_booking_id = ? AND status = 'confirmed' FOR UPDATE",
+            [booking_id]
+        );
+
+        if (childBookings.length > 0) {
+            const childId = childBookings[0].id;
+            const childOldData = { resource_id: childBookings[0].resource_id, start_time: childBookings[0].start_time, end_time: childBookings[0].end_time, status: childBookings[0].status };
+            const childNewData = { ...childOldData, status: 'cancelled' };
+            await connection.execute(
+                'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
+                [childId, 'cancel', JSON.stringify(childOldData), JSON.stringify(childNewData), user_id]
+            );
+        }
 
         // Obter lista de convidados se for uma sala
         let guestsToNotify = [];
@@ -355,9 +441,6 @@ exports.endBookingEarly = async (req, res) => {
         }
 
         const booking = bookings[0];
-        const now = new Date();
-        const startTime = new Date(booking.start_time);
-        const endTime = new Date(booking.end_time);
 
         if (booking.status !== 'confirmed') {
             await connection.rollback();
@@ -367,9 +450,15 @@ exports.endBookingEarly = async (req, res) => {
         // Gera a data atual no fuso horário de Portugal para guardar corretamente na BD
         const mysqlNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Lisbon', hour12: false }).replace('T', ' ');
 
+        // Obter id da reserva filho se existir
+        const [childBookings] = await connection.execute(
+            "SELECT id, resource_id, start_time, end_time, status FROM bookings WHERE parent_booking_id = ? AND status = 'confirmed' FOR UPDATE",
+            [booking_id]
+        );
+
         await connection.execute(
-            'UPDATE bookings SET end_time = ? WHERE id = ?',
-            [mysqlNow, booking_id]
+            'UPDATE bookings SET end_time = ? WHERE id = ? OR parent_booking_id = ?',
+            [mysqlNow, booking_id, booking_id]
         );
 
         // REGISTAR NO HISTÓRICO
@@ -380,6 +469,16 @@ exports.endBookingEarly = async (req, res) => {
             'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
             [booking_id, 'update', JSON.stringify(oldData), JSON.stringify(newData), user_id]
         );
+
+        if (childBookings.length > 0) {
+            const childId = childBookings[0].id;
+            const childOldData = { resource_id: childBookings[0].resource_id, start_time: childBookings[0].start_time, end_time: childBookings[0].end_time, status: childBookings[0].status };
+            const childNewData = { ...childOldData, end_time: mysqlNow };
+            await connection.execute(
+                'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
+                [childId, 'update', JSON.stringify(childOldData), JSON.stringify(childNewData), user_id]
+            );
+        }
 
         await connection.commit();
         return res.status(200).json({ message: "Reserva terminada com sucesso. Obrigado por libertar o recurso!" });
@@ -396,7 +495,7 @@ exports.endBookingEarly = async (req, res) => {
 // Atualizar reserva existente
 exports.updateBooking = async (req, res) => {
     const booking_id = req.params.id;
-    const { resource_id, start_time, end_time, guests } = req.body;
+    const { resource_id, start_time, end_time, guests, extra_resource_id } = req.body;
     const user_id = req.user.id;
 
     if (!resource_id || !start_time || !end_time) {
@@ -496,6 +595,100 @@ exports.updateBooking = async (req, res) => {
             [booking_id, 'update', JSON.stringify(oldData), JSON.stringify(newData), user_id]
         );
 
+        // 3.1 PROCESSAR ATUALIZAÇÃO DO MONITOR EXTRA
+        // Buscar se já tem monitor extra ativo (reserva filho)
+        const [existingChildBookings] = await connection.execute(
+            "SELECT id, resource_id, status FROM bookings WHERE parent_booking_id = ? AND status = 'confirmed' FOR UPDATE",
+            [booking_id]
+        );
+        const childBooking = existingChildBookings[0];
+
+        if (extra_resource_id) {
+            const queryExtra = `
+                SELECT r.status, r.name, rt.name AS resource_type
+                FROM resources r
+                JOIN resource_types rt ON r.type_id = rt.id
+                WHERE r.id = ?
+                FOR UPDATE
+            `;
+            const [extras] = await connection.execute(queryExtra, [extra_resource_id]);
+            if (extras.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ message: "O monitor extra selecionado não existe." });
+            }
+            if (extras[0].status !== 'active') {
+                await connection.rollback();
+                return res.status(400).json({ message: "O monitor extra selecionado está em manutenção." });
+            }
+            if (extras[0].resource_type !== 'monitor') {
+                await connection.rollback();
+                return res.status(400).json({ message: "O recurso extra selecionado deve ser um monitor." });
+            }
+
+            // Validar conflitos do monitor extra (excluindo a reserva filho atual se existir)
+            const childBookingId = childBooking ? childBooking.id : 0;
+            const queryVerificacaoExtra = `
+                SELECT id FROM bookings 
+                WHERE resource_id = ? 
+                AND status = 'confirmed'
+                AND id != ?
+                AND start_time < ? 
+                AND end_time > ?
+                FOR UPDATE
+            `;
+            const [extraConflitos] = await connection.execute(queryVerificacaoExtra, [extra_resource_id, childBookingId, end_time, start_time]);
+            if (extraConflitos.length > 0) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: "Lamentamos, mas o monitor extra selecionado já se encontra reservado para o horário."
+                });
+            }
+
+            if (childBooking) {
+                // Atualizar monitor existente
+                const childOldData = { resource_id: childBooking.resource_id, start_time: oldBooking.start_time, end_time: oldBooking.end_time, status: childBooking.status };
+                const childNewData = { resource_id: extra_resource_id, start_time, end_time, status: childBooking.status };
+                
+                await connection.execute(
+                    'UPDATE bookings SET resource_id = ?, start_time = ?, end_time = ? WHERE id = ?',
+                    [extra_resource_id, start_time, end_time, childBooking.id]
+                );
+
+                await connection.execute(
+                    'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
+                    [childBooking.id, 'update', JSON.stringify(childOldData), JSON.stringify(childNewData), user_id]
+                );
+            } else {
+                // Criar nova reserva para monitor extra
+                const [extraResult] = await connection.execute(
+                    'INSERT INTO bookings (user_id, resource_id, start_time, end_time, status, parent_booking_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    [user_id, extra_resource_id, start_time, end_time, 'confirmed', booking_id]
+                );
+                
+                const extraBookingData = { resource_id: extra_resource_id, start_time, end_time, status: 'confirmed', parent_booking_id: booking_id };
+                await connection.execute(
+                    'INSERT INTO booking_history (booking_id, action, new_data, changed_by) VALUES (?, ?, ?, ?)',
+                    [extraResult.insertId, 'create', JSON.stringify(extraBookingData), user_id]
+                );
+            }
+        } else {
+            // Se extra_resource_id não foi passado mas existia monitor extra, cancelá-lo
+            if (childBooking) {
+                const childOldData = { resource_id: childBooking.resource_id, start_time: oldBooking.start_time, end_time: oldBooking.end_time, status: childBooking.status };
+                const childNewData = { ...childOldData, status: 'cancelled' };
+
+                await connection.execute(
+                    "UPDATE bookings SET status = 'cancelled' WHERE id = ?",
+                    [childBooking.id]
+                );
+
+                await connection.execute(
+                    'INSERT INTO booking_history (booking_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)',
+                    [childBooking.id, 'cancel', JSON.stringify(childOldData), JSON.stringify(childNewData), user_id]
+                );
+            }
+        }
+
         // 4. PROCESSAR ALTERAÇÕES DE CONVIDADOS
         const oldIsRoom = oldBooking.resource_type === 'room';
         const newIsRoom = recursos[0].resource_type === 'room';
@@ -504,7 +697,6 @@ exports.updateBooking = async (req, res) => {
         let guestDetailsToRemove = [];
         let guestDetailsToUpdate = [];
 
-        // Só faz sentido processar se guests for passado no body
         if (guests && Array.isArray(guests)) {
             const cleanBodyGuests = [...new Set(guests.map(e => e.trim().toLowerCase()).filter(Boolean))];
 
@@ -693,6 +885,7 @@ Equipa Reserva Office`;
     }
 };
 
+// Obter todas as reservas (Admin)
 exports.getAllBookings = async (req, res) => {
     try {
         const query = `
@@ -709,11 +902,13 @@ exports.getAllBookings = async (req, res) => {
             JOIN users u ON b.user_id = u.id
             JOIN resources r ON b.resource_id = r.id
             JOIN resource_types rt ON r.type_id = rt.id
+            WHERE b.parent_booking_id IS NULL
             ORDER BY b.start_time DESC
         `;
         
         const [bookings] = await db.execute(query);
         for (const booking of bookings) {
+            // Convidados se for sala
             if (booking.resource_type === 'room') {
                 const [guests] = await db.execute(
                     'SELECT email, name, status FROM booking_guests WHERE booking_id = ?',
@@ -722,6 +917,24 @@ exports.getAllBookings = async (req, res) => {
                 booking.guests = guests;
             } else {
                 booking.guests = [];
+            }
+
+            // Monitor extra se existir
+            const [childBookings] = await db.execute(
+                `SELECT b.id AS booking_id, b.resource_id, r.name AS resource_name 
+                 FROM bookings b
+                 JOIN resources r ON b.resource_id = r.id
+                 WHERE b.parent_booking_id = ? AND b.status = 'confirmed'`,
+                [booking.booking_id]
+            );
+            if (childBookings.length > 0) {
+                booking.extra = {
+                    booking_id: childBookings[0].booking_id,
+                    resource_id: childBookings[0].resource_id,
+                    resource_name: childBookings[0].resource_name
+                };
+            } else {
+                booking.extra = null;
             }
         }
 
