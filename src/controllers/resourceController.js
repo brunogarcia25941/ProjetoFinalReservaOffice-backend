@@ -124,6 +124,7 @@ exports.getResourcesWithAvailability = async (req, res) => {
             SELECT 
                 r.id, r.name, rt.name as type, r.status, 
                 l.building, l.floor, l.zone, r.features,
+                r.pos_x, r.pos_y, r.rotation,
                 (SELECT COUNT(*) FROM bookings b 
                  WHERE b.resource_id = r.id 
                  AND b.status = 'confirmed'
