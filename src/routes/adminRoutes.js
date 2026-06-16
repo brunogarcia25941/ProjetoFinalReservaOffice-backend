@@ -6,6 +6,7 @@ const authController = require('../controllers/authController');
 const authMiddleware = require('../middlewares/auth');
 const adminMiddleware = require('../middlewares/admin');
 const auditController = require('../controllers/auditController');
+const statsController = require('../controllers/statsController');
 
 const updateUserValidation = [
     param('id').isInt(),
@@ -158,5 +159,8 @@ router.put('/users/:id', updateUserValidation, validate, authController.updateUs
  *         description: Utilizador não encontrado.
  */
 router.delete('/users/:id', deleteUserValidation, validate, authController.deleteUser);
+
+// Rota de estatísticas de ocupação
+router.get('/stats', statsController.getSpaceStats);
 
 module.exports = router;
