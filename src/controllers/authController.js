@@ -17,7 +17,7 @@ exports.login = async (req, res) => {
 
     try {
         const query = `
-            SELECT u.id, ur.name as role, u.token_version, u.password_hash 
+            SELECT u.id, ur.name as role, u.token_version, u.password_hash, u.must_change_password 
             FROM users u 
             JOIN user_roles ur ON u.role_id = ur.id 
             WHERE u.email = ? AND ur.active = TRUE
@@ -60,7 +60,8 @@ exports.login = async (req, res) => {
         res.json({
             message: 'Login com sucesso',
             accessToken,
-            refreshToken
+            refreshToken,
+            mustChangePassword: user.must_change_password ? true : false
         });
     } catch (error) {
         console.error('Erro no login:', error);
@@ -440,7 +441,7 @@ exports.getMe = async (req, res) => {
     try {
         // req.user.id é injetado pelo middleware de segurança (verificarToken)
         const [users] = await db.execute(
-            `SELECT u.id, u.name, u.email, u.home_office_id, o.name AS home_office 
+            `SELECT u.id, u.name, u.email, u.home_office_id, o.name AS home_office, u.must_change_password 
              FROM users u 
              LEFT JOIN offices o ON u.home_office_id = o.id 
              WHERE u.id = ?`,
@@ -456,5 +457,165 @@ exports.getMe = async (req, res) => {
     } catch (error) {
         console.error('Erro ao obter perfil:', error);
         res.status(500).json({ message: 'Erro ao obter dados do utilizador.' });
+    }
+};
+
+// 1. Pedido de registo pelo utilizador
+exports.submitRegistrationRequest = async (req, res) => {
+    const { name, email, reason } = req.body;
+
+    if (!name || !name.trim() || !email) {
+        return res.status(400).json({ message: 'Nome e email são obrigatórios.' });
+    }
+
+    try {
+        const [existingUser] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
+        if (existingUser.length > 0) {
+            return res.status(400).json({ message: 'Já existe uma conta ativa com este email.' });
+        }
+
+        const [existingRequest] = await db.execute(
+            "SELECT id FROM registration_requests WHERE email = ? AND status = 'pending'",
+            [email]
+        );
+        if (existingRequest.length > 0) {
+            return res.status(400).json({ message: 'Já existe um pedido de registo pendente para este email.' });
+        }
+
+        await db.execute(
+            'INSERT INTO registration_requests (name, email, reason) VALUES (?, ?, ?)',
+            [name.trim(), email, reason || null]
+        );
+
+        res.status(201).json({ message: 'Pedido de registo enviado com sucesso! Aguarde a aprovação do administrador.' });
+    } catch (error) {
+        console.error('Erro ao submeter pedido de registo:', error);
+        res.status(500).json({ message: 'Erro interno ao submeter o pedido.' });
+    }
+};
+
+// 2. Obter todos os pedidos de registo (Apenas Admin)
+exports.getRegistrationRequests = async (req, res) => {
+    try {
+        const [requests] = await db.execute('SELECT * FROM registration_requests ORDER BY created_at DESC');
+        res.json(requests);
+    } catch (error) {
+        console.error('Erro ao obter pedidos de registo:', error);
+        res.status(500).json({ message: 'Erro interno ao obter pedidos.' });
+    }
+};
+
+// 3. Resolver pedido de registo (Aprovado / Recusado) (Apenas Admin)
+exports.resolveRegistrationRequest = async (req, res) => {
+    const { id } = req.params;
+    const { action } = req.body;
+
+    if (!action || !['approved', 'rejected'].includes(action)) {
+        return res.status(400).json({ message: 'Ação inválida. Use "approved" ou "rejected".' });
+    }
+
+    try {
+        const [requests] = await db.execute('SELECT * FROM registration_requests WHERE id = ?', [id]);
+        if (requests.length === 0) {
+            return res.status(404).json({ message: 'Pedido de registo não encontrado.' });
+        }
+
+        const request = requests[0];
+        if (request.status !== 'pending') {
+            return res.status(400).json({ message: 'Este pedido já foi resolvido anteriormente.' });
+        }
+
+        if (action === 'approved') {
+            const [roles] = await db.execute("SELECT id FROM user_roles WHERE name = 'user'");
+            const roleId = roles.length > 0 ? roles[0].id : 1;
+
+            const tempPassword = crypto.randomBytes(5).toString('hex');
+
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(tempPassword, salt);
+
+            await db.execute(
+                'INSERT INTO users (name, email, password_hash, role_id, must_change_password) VALUES (?, ?, ?, ?, TRUE)',
+                [request.name, request.email, hashedPassword, roleId]
+            );
+
+            try {
+                await sendEmail({
+                    email: request.email,
+                    subject: 'Pedido de Registo Aprovado - Password Temporária',
+                    message: `Olá ${request.name},\n\nO teu pedido de registo foi aprovado pelo administrador!\n\nAs tuas credenciais de acesso são:\nEmail: ${request.email}\nPassword Temporária: ${tempPassword}\n\nNota: Terás de alterar esta password no teu primeiro login.`,
+                    email_type: 'registration_approved'
+                });
+            } catch (emailError) {
+                console.error('Erro ao enviar email de aprovação. Password provisória:', tempPassword);
+            }
+
+            await db.execute(
+                "UPDATE registration_requests SET status = 'approved', resolved_at = NOW() WHERE id = ?",
+                [id]
+            );
+
+            res.json({ 
+                message: 'Pedido aprovado com sucesso! Utilizador criado.',
+                tempPassword
+            });
+        } else {
+            await db.execute(
+                "UPDATE registration_requests SET status = 'rejected', resolved_at = NOW() WHERE id = ?",
+                [id]
+            );
+
+            try {
+                await sendEmail({
+                    email: request.email,
+                    subject: 'Pedido de Registo - Informação',
+                    message: `Olá ${request.name},\n\nLamentamos informar que o teu pedido de registo foi recusado pelo administrador do portal Reserva Office.\n\nPara mais informações, entra em contacto com o suporte do teu escritório.`,
+                    email_type: 'registration_rejected'
+                });
+            } catch (emailError) {
+                console.error('Erro ao enviar email de rejeição');
+            }
+
+            res.json({ message: 'Pedido recusado com sucesso.' });
+        }
+    } catch (error) {
+        console.error('Erro ao resolver pedido de registo:', error);
+        res.status(500).json({ message: 'Erro interno ao resolver pedido.' });
+    }
+};
+
+// 4. Alterar password temporária (primeiro login)
+exports.changeTemporaryPassword = async (req, res) => {
+    const userId = req.user.id;
+    const { newPassword } = req.body;
+
+    if (!newPassword) {
+        return res.status(400).json({ message: 'A nova password é obrigatória.' });
+    }
+
+    const validatePassword = (pwd) => {
+        const re = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+        return re.test(pwd);
+    };
+
+    if (!validatePassword(newPassword)) {
+        return res.status(400).json({
+            message: "A password deve conter pelo menos 8 caracteres, uma letra maiúscula, uma minúscula e um número."
+        });
+    }
+
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        await db.execute(
+            'UPDATE users SET password_hash = ?, must_change_password = FALSE WHERE id = ?',
+            [hashedPassword, userId]
+        );
+
+        res.json({ message: 'Password atualizada com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao redefinir password temporária:', error);
+        res.status(500).json({ message: 'Erro interno ao redefinir a password.' });
     }
 };

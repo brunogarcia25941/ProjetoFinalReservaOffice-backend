@@ -99,3 +99,83 @@ exports.deleteOffice = async (req, res) => {
         res.status(500).json({ message: 'Erro ao desativar escritório.' });
     }
 };
+
+// 5. Obter layout de um escritório/piso (Imagem de fundo, tamanho e paredes)
+exports.getOfficeLayout = async (req, res) => {
+    const { office_name, floor } = req.query;
+
+    if (!office_name || !floor) {
+        return res.status(400).json({ message: 'O nome do escritório e o piso são obrigatórios.' });
+    }
+
+    try {
+        const [rows] = await db.execute(
+            'SELECT * FROM office_layouts WHERE office_name = ? AND floor = ?',
+            [office_name, parseInt(floor)]
+        );
+
+        if (rows.length === 0) {
+            return res.json({
+                office_name,
+                floor: parseInt(floor),
+                map_image: null,
+                map_width: 800,
+                map_height: 500,
+                walls: []
+            });
+        }
+
+        const layout = rows[0];
+        let walls = [];
+        if (layout.walls) {
+            try {
+                walls = typeof layout.walls === 'string' ? JSON.parse(layout.walls) : layout.walls;
+            } catch (e) {
+                console.error('Erro ao fazer parse das paredes:', e);
+            }
+        }
+
+        res.json({
+            office_name: layout.office_name,
+            floor: layout.floor,
+            map_image: layout.map_image,
+            map_width: layout.map_width,
+            map_height: layout.map_height,
+            walls: walls
+        });
+    } catch (error) {
+        console.error('Erro ao obter layout do escritório:', error);
+        res.status(500).json({ message: 'Erro ao obter layout do escritório.' });
+    }
+};
+
+// 6. Guardar ou atualizar layout de um escritório/piso (Imagem de fundo, tamanho e paredes)
+exports.saveOfficeLayout = async (req, res) => {
+    const { office_name, floor, map_image, map_width, map_height, walls } = req.body;
+
+    if (!office_name || floor === undefined) {
+        return res.status(400).json({ message: 'O nome do escritório e o piso são obrigatórios.' });
+    }
+
+    try {
+        const width = map_width || 800;
+        const height = map_height || 500;
+        const wallsStr = walls ? JSON.stringify(walls) : '[]';
+
+        await db.execute(`
+            INSERT INTO office_layouts (office_name, floor, map_image, map_width, map_height, walls)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                map_image = VALUES(map_image),
+                map_width = VALUES(map_width),
+                map_height = VALUES(map_height),
+                walls = VALUES(walls)
+        `, [office_name, parseInt(floor), map_image || null, width, height, wallsStr]);
+
+        res.json({ message: 'Layout guardado com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao guardar layout do escritório:', error);
+        res.status(500).json({ message: 'Erro ao guardar layout do escritório.' });
+    }
+};
+

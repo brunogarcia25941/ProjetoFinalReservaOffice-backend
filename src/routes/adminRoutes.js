@@ -163,4 +163,8 @@ router.delete('/users/:id', deleteUserValidation, validate, authController.delet
 // Rota de estatísticas de ocupação
 router.get('/stats', statsController.getSpaceStats);
 
+// Gestão de Pedidos de Registo
+router.get('/registration-requests', authController.getRegistrationRequests);
+router.post('/registration-requests/:id/resolve', authController.resolveRegistrationRequest);
+
 module.exports = router;

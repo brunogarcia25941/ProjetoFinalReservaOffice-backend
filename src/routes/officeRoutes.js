@@ -7,6 +7,12 @@ const adminMiddleware = require('../middlewares/admin');
 // Listar todos os escritórios (Utilizadores Autenticados)
 router.get('/', authMiddleware, officeController.getAllOffices);
 
+// Obter layout de um escritório/piso (Utilizadores Autenticados)
+router.get('/layout', authMiddleware, officeController.getOfficeLayout);
+
+// Guardar ou atualizar layout (Apenas Admin)
+router.post('/layout', authMiddleware, adminMiddleware, officeController.saveOfficeLayout);
+
 // Criar escritório (Apenas Admin)
 router.post('/', authMiddleware, adminMiddleware, officeController.createOffice);
 

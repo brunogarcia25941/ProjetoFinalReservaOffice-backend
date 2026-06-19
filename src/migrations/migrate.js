@@ -70,13 +70,37 @@ const runMigrations = async () => {
                     action ENUM('create', 'update', 'cancel', 'delete') NOT NULL,
                     old_data JSON NULL,
                     new_data JSON NULL,
-                    changed_by INT NOT NULL,
+                    changed_by INT NULL,
                     changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
-                    FOREIGN KEY (changed_by) REFERENCES users(id)
+                    FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
                 )
             `);
             console.log('Tabela booking_history verificada/criada.');
+
+            // Garantir que a coluna mudou para NULL e a FK para ON DELETE SET NULL para bases de dados antigas
+            try {
+                const [cols] = await connection.query("SHOW COLUMNS FROM booking_history LIKE 'changed_by'");
+                if (cols.length > 0 && cols[0].Null === 'NO') {
+                    console.log('Atualizando booking_history para permitir changed_by NULL (correção de DELETE)...');
+                    await connection.query('ALTER TABLE booking_history MODIFY COLUMN changed_by INT NULL');
+                    
+                    try {
+                        await connection.query('ALTER TABLE booking_history DROP FOREIGN KEY booking_history_ibfk_2');
+                    } catch (dropErr) {
+                        // FK pode ter outro nome ou já não existir
+                    }
+                    
+                    try {
+                        await connection.query('ALTER TABLE booking_history ADD CONSTRAINT booking_history_ibfk_2 FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL');
+                    } catch (addErr) {
+                        // FK pode já estar configurada
+                    }
+                    console.log('booking_history atualizada com sucesso.');
+                }
+            } catch (innerErr) {
+                console.error('Erro ao migrar a FK de booking_history:', innerErr.message);
+            }
         } catch (e) {
             console.error('Erro ao criar tabela booking_history:', e.message);
         }
@@ -482,6 +506,55 @@ try {
             console.error('Erro ao criar tabela tickets:', e.message);
         }
 
+        // 10. Criar Tabela de Layouts de Escritórios (Mapas customizados, dimensões e paredes)
+        try {
+            await connection.query(`
+                CREATE TABLE IF NOT EXISTS office_layouts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    office_name VARCHAR(100) NOT NULL,
+                    floor INT NOT NULL,
+                    map_image LONGTEXT NULL,
+                    map_width INT DEFAULT 800,
+                    map_height INT DEFAULT 500,
+                    walls JSON NULL,
+                    UNIQUE KEY unique_office_floor (office_name, floor)
+                )
+            `);
+            console.log('Tabela office_layouts verificada/criada.');
+        } catch (e) {
+            console.error('Erro ao criar tabela office_layouts:', e.message);
+        }
+
+        // 11. Criar Tabela de Pedidos de Registo
+        try {
+            await connection.query(`
+                CREATE TABLE IF NOT EXISTS registration_requests (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) NOT NULL UNIQUE,
+                    reason TEXT NULL,
+                    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    resolved_at DATETIME NULL
+                )
+            `);
+            console.log('Tabela registration_requests verificada/criada.');
+        } catch (e) {
+            console.error('Erro ao criar tabela registration_requests:', e.message);
+        }
+
+        // 12. Adicionar coluna must_change_password à tabela users
+        try {
+            await connection.query("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE");
+            console.log('Coluna must_change_password adicionada à tabela users.');
+        } catch (e) { /* Coluna já existe */ }
+
+        // Adicionar colunas de posicionamento à tabela resources
+        try {
+            await connection.query("ALTER TABLE resources ADD COLUMN pos_x INT NULL, ADD COLUMN pos_y INT NULL, ADD COLUMN rotation INT NOT NULL DEFAULT 0");
+            console.log('Colunas pos_x, pos_y e rotation adicionadas aos recursos.');
+        } catch (e) { /* Colunas já existem */ }
+
         console.log('--- Migrações Concluídas com Sucesso! ---');
         process.exit(0);
     } catch (err) {
@@ -490,13 +563,6 @@ try {
     } finally {
         if (connection) connection.release();
     }
-
-
-    // Adicionar colunas de posicionamento à tabela resources
-    try {
-        await connection.query("ALTER TABLE resources ADD COLUMN pos_x INT NULL, ADD COLUMN pos_y INT NULL, ADD COLUMN rotation INT NOT NULL DEFAULT 0");
-        console.log('Colunas pos_x, pos_y e rotation adicionadas aos recursos.');
-    } catch (e) { /* Colunas já existem */ }
 
 };
 

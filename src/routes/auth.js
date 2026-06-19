@@ -235,6 +235,11 @@ router.post('/forgot-password', forgotPasswordLimiter, authController.forgotPass
  */
 router.post('/reset-password', resetPasswordValidation, validate, authController.resetPassword);
 
+// Pedido de registo pelo utilizador (Público)
+router.post('/register-request', authController.submitRegistrationRequest);
+
+// Alterar password temporária (Autenticado)
+router.post('/change-temp-password', authMiddleware, authController.changeTemporaryPassword);
 
 /**
  * @swagger
