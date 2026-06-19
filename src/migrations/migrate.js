@@ -117,17 +117,28 @@ const runMigrations = async () => {
             `);
             console.log('Tabela resource_types verificada.');
             
-            // Inserir valores padrão se a tabela estiver vazia
-            const [types] = await connection.query("SELECT COUNT(*) as total FROM resource_types");
-            if (types[0].total === 0) {
-                await connection.query(`
-                    INSERT INTO resource_types (name, label) VALUES 
-                    ('desk', 'Mesa de Trabalho'),
-                    ('monitor', 'Monitor Extra'),
-                    ('room', 'Sala de Reunião')
-                `);
-                console.log('Valores padrão inseridos em resource_types.');
+            // Inserir valores padrão e novos tipos usando INSERT IGNORE
+            const tiposRecursos = [
+                { name: 'desk', label: 'Mesa de Trabalho' },
+                { name: 'monitor', label: 'Monitor Extra' },
+                { name: 'room', label: 'Sala de Reunião' },
+                { name: 'mouse', label: 'Rato' },
+                { name: 'keyboard', label: 'Teclado' },
+                { name: 'headphones', label: 'Auscultadores / Fones' },
+                { name: 'hdmi_cable', label: 'Cabo HDMI' },
+                { name: 'network_cable', label: 'Cabo de Rede' },
+                { name: 'webcam', label: 'Webcam' },
+                { name: 'hdmi_vga_adapter', label: 'Adaptador HDMI para VGA' },
+                { name: 'pc_charger', label: 'Carregador de PC' }
+            ];
+
+            for (const t of tiposRecursos) {
+                await connection.query(
+                    "INSERT IGNORE INTO resource_types (name, label) VALUES (?, ?)",
+                    [t.name, t.label]
+                );
             }
+            console.log('Tipos de recursos (resource_types) verificados e sincronizados.');
         } catch (e) { console.error('Erro em resource_types:', e.message); }
 
         try {
