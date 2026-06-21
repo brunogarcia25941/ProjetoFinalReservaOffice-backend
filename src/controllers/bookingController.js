@@ -55,32 +55,33 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ message: "O tipo de recorrência deve ser 'daily' ou 'weekly'." });
         }
         
-        let currentStart = new Date(start_time);
-        let currentEnd = new Date(end_time);
-        const limitDate = new Date(recurrence.endDate);
+        let currentStart = new Date(start_time.replace(' ', 'T') + 'Z');
+        let currentEnd = new Date(end_time.replace(' ', 'T') + 'Z');
+        const limitDateLocal = new Date(recurrence.endDate);
+        const limitDateUTC = new Date(recurrence.endDate.replace(' ', 'T') + 'Z');
         
         // Limitar a data de fim de recorrência a no máximo 1 mês de antecedência
-        if (limitDate > limiteFuturo) {
+        if (limitDateLocal > limiteFuturo) {
             return res.status(400).json({ message: "A data limite de recorrência não pode exceder o limite de 1 mês no futuro." });
         }
         
         while (true) {
             if (recurrence.type === 'daily') {
-                currentStart.setDate(currentStart.getDate() + 1);
-                currentEnd.setDate(currentEnd.getDate() + 1);
+                currentStart.setUTCDate(currentStart.getUTCDate() + 1);
+                currentEnd.setUTCDate(currentEnd.getUTCDate() + 1);
             } else if (recurrence.type === 'weekly') {
-                currentStart.setDate(currentStart.getDate() + 7);
-                currentEnd.setDate(currentEnd.getDate() + 7);
+                currentStart.setUTCDate(currentStart.getUTCDate() + 7);
+                currentEnd.setUTCDate(currentEnd.getUTCDate() + 7);
             }
             
-            if (currentStart > limitDate) {
+            if (currentStart > limitDateUTC) {
                 break;
             }
             
             // Converter de volta para formato de string ISO
             ocorrencias.push({
-                start_time: currentStart.toLocaleString('sv-SE', { timeZone: 'Europe/Lisbon', hour12: false }).replace('T', ' '),
-                end_time: currentEnd.toLocaleString('sv-SE', { timeZone: 'Europe/Lisbon', hour12: false }).replace('T', ' ')
+                start_time: currentStart.toISOString().replace('T', ' ').substring(0, 19),
+                end_time: currentEnd.toISOString().replace('T', ' ').substring(0, 19)
             });
         }
 

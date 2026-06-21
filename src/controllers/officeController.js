@@ -141,7 +141,8 @@ exports.getOfficeLayout = async (req, res) => {
             map_image: layout.map_image,
             map_width: layout.map_width,
             map_height: layout.map_height,
-            walls: walls
+            walls: walls,
+            pixels_per_meter: layout.pixels_per_meter || 50
         });
     } catch (error) {
         console.error('Erro ao obter layout do escritório:', error);
@@ -151,7 +152,7 @@ exports.getOfficeLayout = async (req, res) => {
 
 // 6. Guardar ou atualizar layout de um escritório/piso (Imagem de fundo, tamanho e paredes)
 exports.saveOfficeLayout = async (req, res) => {
-    const { office_name, floor, map_image, map_width, map_height, walls } = req.body;
+    const { office_name, floor, map_image, map_width, map_height, walls, pixels_per_meter } = req.body;
 
     if (!office_name || floor === undefined) {
         return res.status(400).json({ message: 'O nome do escritório e o piso são obrigatórios.' });
@@ -161,16 +162,18 @@ exports.saveOfficeLayout = async (req, res) => {
         const width = map_width || 800;
         const height = map_height || 500;
         const wallsStr = walls ? JSON.stringify(walls) : '[]';
+        const ppm = pixels_per_meter || 50;
 
         await db.execute(`
-            INSERT INTO office_layouts (office_name, floor, map_image, map_width, map_height, walls)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO office_layouts (office_name, floor, map_image, map_width, map_height, walls, pixels_per_meter)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 map_image = VALUES(map_image),
                 map_width = VALUES(map_width),
                 map_height = VALUES(map_height),
-                walls = VALUES(walls)
-        `, [office_name, parseInt(floor), map_image || null, width, height, wallsStr]);
+                walls = VALUES(walls),
+                pixels_per_meter = VALUES(pixels_per_meter)
+        `, [office_name, parseInt(floor), map_image || null, width, height, wallsStr, ppm]);
 
         res.json({ message: 'Layout guardado com sucesso!' });
     } catch (error) {

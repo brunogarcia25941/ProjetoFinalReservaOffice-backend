@@ -528,10 +528,17 @@ try {
                     map_width INT DEFAULT 800,
                     map_height INT DEFAULT 500,
                     walls JSON NULL,
+                    pixels_per_meter INT DEFAULT 50,
                     UNIQUE KEY unique_office_floor (office_name, floor)
                 )
             `);
             console.log('Tabela office_layouts verificada/criada.');
+
+            // Adicionar coluna pixels_per_meter a tabelas já existentes
+            try {
+                await connection.query("ALTER TABLE office_layouts ADD COLUMN pixels_per_meter INT DEFAULT 50");
+                console.log('Coluna pixels_per_meter adicionada a office_layouts.');
+            } catch (e) { /* Coluna já existe */ }
         } catch (e) {
             console.error('Erro ao criar tabela office_layouts:', e.message);
         }
