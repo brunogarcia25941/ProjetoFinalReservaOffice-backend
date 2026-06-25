@@ -79,18 +79,8 @@ npm run seed
 ```
 
 ### 3. Variáveis de Ambiente (.env)
-Cria um ficheiro chamado `.env` na raiz do backend e preenche com os seguintes parâmetros:
-```env
-PORT=5000
-DB_HOST=teu_host_mysql
-DB_USER=teu_utilizador
-DB_PASSWORD=tua_password
-DB_NAME=reserva_office
-DB_PORT=3306
-DB_SSL=true          # Define 'true' se usares ligação SSL como na Aiven Cloud
-JWT_SECRET=segredo_do_access_token_jwt
-JWT_REFRESH_SECRET=segredo_do_refresh_token_jwt
-```
+Cria um ficheiro chamado `.env` na raiz do backend e configura as variáveis de ambiente necessárias para a ligação ao servidor, base de dados (MySQL) e chaves de segurança (JWT).
+
 
 ### 4. Iniciar o Servidor
 Para iniciar o servidor em modo de desenvolvimento com hot-reload automático (nodemon):
